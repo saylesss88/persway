@@ -3,15 +3,15 @@ use crate::layout::{StackLayout, WorkspaceLayout, STACK_MAIN_DEFAULT_SIZE};
 #[derive(clap::Parser, Debug)]
 pub struct DaemonArgs {
     /// Which layout should be the default when no other layout has been specified for
-    /// a workspace. Options are: manual, spiral and stack_main.
+    /// a workspace. Options are: manual, spiral and `stack_main`.
     #[arg(long, short = 'd', default_value = "manual")]
     pub default_layout: WorkspaceLayout,
 
-    /// This controls the default size of the main area in the stack_main layout.
+    /// This controls the default size of the main area in the `stack_main` layout.
     #[arg(long, short = 's', default_value_t = STACK_MAIN_DEFAULT_SIZE)]
     pub stack_main_default_size: u8,
 
-    /// This controls the default sway layout of the stack area in the stack_main layout.
+    /// This controls the default sway layout of the stack area in the `stack_main` layout.
     /// Any of: tabbed, tiled or stacked
     #[arg(long, short = 'k', default_value_t = StackLayout::Stacked)]
     pub stack_main_default_stack_layout: StackLayout,
@@ -29,7 +29,7 @@ pub struct DaemonArgs {
     /// Eg. set all tiling windows to opacity 0.8 but set the currently focused window to opacity 1.
     /// Or if you want to skip some applications - in this case firefox - you would do something like:
     ///
-    /// [tiling] opacity 0.8; [app_id="firefox"] opacity 1; opacity 1
+    /// [tiling] opacity 0.8; [`app_id="firefox`] opacity 1; opacity 1
     #[arg(long, short = 'f')]
     pub on_window_focus: Option<String>,
 
@@ -40,7 +40,7 @@ pub struct DaemonArgs {
     ///
     /// and then in your sway config:
     ///
-    /// bindsym Mod1+tab [con_mark=_prev] focus
+    /// bindsym Mod1+tab [`con_mark=_prev`] focus
     #[arg(long, short = 'l')]
     pub on_window_focus_leave: Option<String>,
 
@@ -72,7 +72,7 @@ pub enum PerswayCommand {
     /// Changes the layout of the focused workspace
     ChangeLayout {
         /// Change the layout of the focused workspace, can be any of:
-        /// manual, spiral, stack_main
+        /// manual, spiral, `stack_main`
         #[command(subcommand)]
         layout: WorkspaceLayout,
     },

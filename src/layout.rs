@@ -17,7 +17,7 @@ impl FromStr for WorkspaceLayout {
                 size: STACK_MAIN_DEFAULT_SIZE,
             }),
             "manual" => Ok(Self::Manual),
-            s => Err(anyhow!("I don't know about the layout '{}'", s)),
+            s => Err(anyhow!("I don't know about the layout '{s}'")),
         }
     }
 }
@@ -27,11 +27,11 @@ impl Display for WorkspaceLayout {
         let string_layout = match self {
             Self::Spiral => String::from("spiral"),
             Self::StackMain { stack_layout, size } => {
-                format!("stack_main {} {}", stack_layout, size)
+                format!("stack_main {stack_layout} {size}")
             }
             Self::Manual => String::from("manual"),
         };
-        write!(f, "{}", string_layout)
+        write!(f, "{string_layout}")
     }
 }
 
@@ -40,7 +40,8 @@ const SIZE_RANGE: RangeInclusive<usize> = 10..=90;
 fn size_in_range(s: &str) -> Result<u8, String> {
     let size: usize = s.parse().map_err(|_| format!("{s} is not a valid size"))?;
     if SIZE_RANGE.contains(&size) {
-        return Ok(size as u8);
+        // Map the TryFromIntError into a String so the '?' works
+        return u8::try_from(size).map_err(|e| e.to_string());
     }
     Err(format!(
         "size not in range {}-{}",
@@ -56,7 +57,7 @@ impl FromStr for StackLayout {
             "tabbed" => Ok(Self::Tabbed),
             "stacked" => Ok(Self::Stacked),
             "tiled" => Ok(Self::Tiled),
-            s => Err(anyhow!("I don't know about the stack layout '{}'", s)),
+            s => Err(anyhow!("I don't know about the stack layout '{s}'")),
         }
     }
 }
@@ -68,22 +69,22 @@ impl Display for StackLayout {
             Self::Stacked => "stacked",
             Self::Tiled => "tiled",
         };
-        write!(f, "{}", string_layout)
+        write!(f, "{string_layout}")
     }
 }
 
-#[derive(clap::Parser, Debug, Clone, PartialEq)]
+#[derive(clap::Parser, Debug, Clone, PartialEq, Eq)]
 pub enum StackLayout {
     Tabbed,
     Stacked,
     Tiled,
 }
 
-#[derive(clap::Parser, Debug, Clone, PartialEq)]
+#[derive(clap::Parser, Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceLayout {
-    /// The spiral autotiling layout tiles windows in a spiral formation, similar to AwesomeWM
+    /// The spiral autotiling layout tiles windows in a spiral formation, similar to `AwesomeWM`
     Spiral,
-    /// The stack_main autotiling layout keeps a stack of windows on the side of a larger main area, this layout comes with a few commands to control it as well
+    /// The `stack_main` autotiling layout keeps a stack of windows on the side of a larger main area, this layout comes with a few commands to control it as well
     StackMain {
         /// Size of the main area in percent
         #[arg(long, short = 's', value_parser = size_in_range, default_value_t = STACK_MAIN_DEFAULT_SIZE)]

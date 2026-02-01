@@ -11,7 +11,7 @@ use clap::Parser;
 use futures::channel::mpsc;
 use futures::SinkExt;
 use futures::{select, stream::StreamExt};
-use signal_hook::consts::signal::*;
+use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_async_std::Signals;
 use std::process::exit;
 use swayipc_async::{Connection, Event, EventType, WindowEvent};
@@ -30,7 +30,7 @@ pub struct Daemon {
 }
 
 impl Daemon {
-    pub fn new(args: DaemonArgs, socket_path: Option<String>) -> Daemon {
+    pub fn new(args: DaemonArgs, socket_path: Option<String>) -> Self {
         let socket_path = utils::get_socket_path(socket_path);
         let DaemonArgs {
             default_layout,
@@ -50,7 +50,7 @@ impl Daemon {
                 },
                 _ => default_layout,
             };
-            Daemon {
+            Self {
                 socket_path,
                 on_exit,
                 message_handler: MessageHandler::new(
@@ -68,7 +68,7 @@ impl Daemon {
         if let Some(_signal) = signals.next().await {
             let mut commands = Connection::new().await.unwrap();
             if let Some(exit_cmd) = on_exit {
-                log::debug!("{}", exit_cmd);
+                log::debug!("{exit_cmd}");
                 commands.run_command(exit_cmd).await.unwrap();
             }
             exit(0)
@@ -96,10 +96,10 @@ impl Daemon {
                         "Unable to remove stale socket: {}\n{:?}",
                         &self.socket_path,
                         e
-                    )
+                    );
                 }
             },
-        };
+        }
 
         let listener = UnixListener::bind(&self.socket_path).await?;
         let mut incoming = listener.incoming().fuse();
@@ -138,7 +138,7 @@ impl Daemon {
                           self.message_handler.handle_command(command).await?;
                           log::debug!("select: handled message command event");
                         }
-                    };
+                    }
                     log::debug!("select: handled message");
                 }
                 complete => panic!("Stream-processing stopped unexpectedly"),
@@ -151,11 +151,11 @@ impl Daemon {
         log::debug!("reading incoming msg");
         match stream.read_to_string(&mut message).await {
             Ok(_) => {
-                log::debug!("got message: {}", message);
+                log::debug!("got message: {message}");
                 let args = match Args::try_parse_from(message.split_ascii_whitespace()) {
                     Ok(args) => args,
                     Err(e) => {
-                        log::error!("unknown message: {}\n{}", message, e);
+                        log::error!("unknown message: {message}\n{e}");
                         return Err(anyhow!("unknown message"));
                     }
                 };
@@ -165,7 +165,7 @@ impl Daemon {
                 stream.write_all(b"success\n").await?;
             }
             Err(e) => {
-                log::error!("Invalid UTF-8 sequence: {}", e);
+                log::error!("Invalid UTF-8 sequence: {e}");
                 log::debug!("writing failure message back to client");
                 stream.write_all(b"fail: invalid utf-8 sequence").await?;
                 stream.write_all(b"\n").await?;

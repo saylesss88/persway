@@ -20,11 +20,11 @@ fn get_app_name(event: &WindowEvent) -> Option<String> {
             .as_ref()
             .and_then(|id| if id.is_empty() { None } else { Some(id) });
 
-    let name = event.container.name.as_ref().and_then(|name| {
+    let name: Option<String> = event.container.name.as_ref().and_then(|name| {
         if name.is_empty() {
             None
         } else {
-            name.split('|').next().map(|s| s.to_string())
+            name.split('|').next().map(ToOwned::to_owned)
         }
     });
 
@@ -66,12 +66,12 @@ impl WorkspaceRenamer {
 
         let ws_num = focused_ws
             .name
-            .split(":")
+            .split(':')
             .next()
             .unwrap_or(&focused_ws.name);
         if let Some(app_name) = get_app_name(&event) {
-            let cmd = format!("rename workspace to {}: {}", ws_num, app_name);
-            log::debug!("workspace name manager, cmd: {}", cmd);
+            let cmd = format!("rename workspace to {ws_num}: {app_name}");
+            log::debug!("workspace name manager, cmd: {cmd}");
             self.connection.run_command(cmd).await?;
         } else {
             log::error!("workspace name manager failed to set a workspace name");
@@ -84,15 +84,10 @@ impl WorkspaceRenamer {
 impl WindowEventHandler for WorkspaceRenamer {
     async fn handle(&mut self, event: Box<WindowEvent>) {
         match event.change {
-            WindowChange::Focus => {
+            WindowChange::Focus | WindowChange::Close => {
                 if let Err(e) = self.rename_workspace(*event).await {
-                    log::error!("workspace name manager, layout err: {}", e);
-                };
-            }
-            WindowChange::Close => {
-                if let Err(e) = self.rename_workspace(*event).await {
-                    log::error!("workspace name manager, layout err: {}", e);
-                };
+                    log::error!("workspace name manager, layout err: {e}");
+                }
             }
             _ => log::debug!(
                 "workspace name manager, not handling event: {:?}",

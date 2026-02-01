@@ -1,7 +1,7 @@
 use crate::node_ext::NodeExt;
 use anyhow::{Context, Result};
 use async_std::task;
-use std::{future::Future, time::Duration};
+use std::{fmt::Write, future::Future, time::Duration};
 use swayipc_async::{Connection, Node, Workspace};
 
 pub const PERSWAY_TMP_WORKSPACE: &str = "◕‿◕";
@@ -69,19 +69,17 @@ where
         .find(|w| w.focused)
         .context("no focused workspace")?;
     let mut windows: Vec<Node> = Vec::with_capacity(50);
-    let mut cmd = String::from("");
+    let mut cmd = String::new();
     for window in ws.iter().filter(|n| n.is_window()) {
         windows.push(window.clone());
-        cmd.push_str(&format!(
-            "[con_id={}] move to workspace {}; ",
-            window.id, PERSWAY_TMP_WORKSPACE
-        ));
     }
-    cmd.push_str(&format!(
+    write!(
+        cmd,
         "workspace {}; move workspace to output {}; ",
         PERSWAY_TMP_WORKSPACE, output.id
-    ));
-    log::debug!("relayout before layout closure: {}", cmd);
+    )
+    .expect("Failed to write string");
+    log::debug!("relayout before layout closure: {cmd}");
     connection.run_command(cmd).await?;
     task::sleep(Duration::from_millis(50)).await;
     let closure_conn = Connection::new().await?;
@@ -94,20 +92,21 @@ where
         .context("no focused workspace")?;
     let mut cmd = String::new();
     if focused_workspace_after_closure.num != focused_workspace.num {
-        cmd.push_str(&format!(
+        write!(
+            cmd,
             "workspace number {focused_workspace_num}; move workspace to output {output_id}; ",
             focused_workspace_num = &focused_workspace.num,
             output_id = output.id,
-        ));
+        )
+        .unwrap();
     }
-    cmd.push_str(&format!(
+    write!(
+        cmd,
         "rename workspace to {ws_name}",
         ws_name = focused_workspace.name
-    ));
-    log::debug!(
-        "rename new workspace to old name after layout closure: {}",
-        cmd
-    );
+    )
+    .unwrap();
+    log::debug!("rename new workspace to old name after layout closure: {cmd}");
     connection.run_command(cmd).await?;
     Ok(())
 }

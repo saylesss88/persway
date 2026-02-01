@@ -30,7 +30,7 @@ impl MessageHandler {
         on_window_focus: Option<String>,
         on_window_focus_leave: Option<String>,
     ) -> Self {
-        MessageHandler {
+        Self {
             workspace_config: HashMap::new(),
             default_layout,
             workspace_renaming,
@@ -67,11 +67,11 @@ impl MessageHandler {
                 ));
             }
             WorkspaceLayout::Manual => {}
-        };
+        }
         if self.workspace_renaming {
             event_handlers::misc::workspace_renamer::WorkspaceRenamer::handle(event.clone()).await;
         }
-        event_handlers::misc::window_focus::WindowFocus::handle(
+        event_handlers::misc::window_focus::WindowFocus::run(
             event.clone(),
             self.on_window_focus.clone(),
             self.on_window_focus_leave.clone(),
@@ -80,13 +80,18 @@ impl MessageHandler {
         Ok(())
     }
     pub async fn handle_command(&mut self, cmd: PerswayCommand) -> Result<()> {
-        log::debug!("controller.handle_command: {:?}", cmd);
+        log::debug!("controller.handle_command: {cmd:?}");
         let mut conn = Connection::new().await?;
         let ws = utils::get_focused_workspace(&mut conn).await?;
         let current_ws_config = self.get_workspace_config(ws.num);
         match cmd {
             PerswayCommand::ChangeLayout { layout } => {
-                if current_ws_config.layout != layout {
+                if current_ws_config.layout == layout {
+                    log::debug!(
+                        "no layout change of ws {} as the requested one was already set",
+                        ws.num,
+                    );
+                } else {
                     self.workspace_config
                         .entry(ws.num)
                         .and_modify(|e| e.layout = layout.clone())
@@ -103,48 +108,43 @@ impl MessageHandler {
                                     "[con_id={}] move to workspace number {}; [con_id={}] focus",
                                     window.id, ws_num, window.id
                                 );
-                                log::debug!("relayout closure cmd: {}", cmd);
+                                log::debug!("relayout closure cmd: {cmd}");
                                 conn.run_command(cmd).await?;
                                 task::sleep(Duration::from_millis(50)).await;
                             }
                             Ok(())
                         },
                     ));
-                } else {
-                    log::debug!(
-                        "no layout change of ws {} as the requested one was already set",
-                        ws.num,
-                    );
                 }
             }
             PerswayCommand::StackFocusNext => {
                 if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
                     let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
-                    ctrl.stack_focus_next().await?
+                    ctrl.stack_focus_next().await?;
                 }
             }
             PerswayCommand::StackFocusPrev => {
                 if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
                     let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
-                    ctrl.stack_focus_prev().await?
+                    ctrl.stack_focus_prev().await?;
                 }
             }
             PerswayCommand::StackMainRotatePrev => {
                 if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
                     let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
-                    ctrl.stack_main_rotate_prev().await?
+                    ctrl.stack_main_rotate_prev().await?;
                 }
             }
             PerswayCommand::StackMainRotateNext => {
                 if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
                     let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
-                    ctrl.stack_main_rotate_next().await?
+                    ctrl.stack_main_rotate_next().await?;
                 }
             }
             PerswayCommand::StackSwapMain => {
                 if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
                     let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
-                    ctrl.stack_swap_main().await?
+                    ctrl.stack_swap_main().await?;
                 }
             }
             PerswayCommand::Daemon(_) => unreachable!(),

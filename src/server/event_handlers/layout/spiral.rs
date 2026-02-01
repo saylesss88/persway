@@ -49,9 +49,9 @@ impl Spiral {
             } else {
                 format!("[con_id={}] focus; split h", node.id)
             };
-            log::debug!("spiral layout: {}", cmd);
+            log::debug!("spiral layout: {cmd}");
             self.connection.run_command(cmd).await?;
-        };
+        }
 
         Ok(())
     }
@@ -61,7 +61,7 @@ impl WindowEventHandler for Spiral {
         match event.change {
             WindowChange::Focus => {
                 if let Err(e) = self.layout(*event).await {
-                    log::error!("spiral manager, layout err: {}", e);
+                    log::error!("spiral manager, layout err: {e}");
                 };
             }
             _ => log::debug!("spiral manager, not handling event: {:?}", event.change),

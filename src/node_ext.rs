@@ -11,13 +11,15 @@ pub enum RefinedNodeType {
     Window,            // directly contains an application
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct LinearNodeIterator<'a> {
     stack: Vec<&'a Node>,
 }
 
+#[allow(dead_code)]
 impl<'a> LinearNodeIterator<'a> {
-    fn new(root: &'a Node) -> LinearNodeIterator<'a> {
+    fn new(root: &'a Node) -> Self {
         let mut stack = Vec::with_capacity(100);
         stack.push(root);
         LinearNodeIterator { stack }
@@ -39,11 +41,12 @@ impl<'a> Iterator for LinearNodeIterator<'a> {
     }
 }
 
+#[allow(dead_code)]
 pub trait NodeExt {
     async fn get_workspace(&self) -> Result<Workspace>;
     fn get_refined_node_type(&self) -> RefinedNodeType;
     async fn get_parent(&self) -> Result<Node>;
-    fn iter(&self) -> LinearNodeIterator;
+    fn iter(&self) -> LinearNodeIterator<'_>;
     fn is_root(&self) -> bool;
     fn is_output(&self) -> bool;
     fn is_workspace(&self) -> bool;
@@ -58,7 +61,7 @@ pub trait NodeExt {
 }
 
 impl NodeExt for Node {
-    fn iter(&self) -> LinearNodeIterator {
+    fn iter(&self) -> LinearNodeIterator<'_> {
         LinearNodeIterator::new(self)
     }
 
@@ -68,21 +71,15 @@ impl NodeExt for Node {
         let workspaces = connection.get_workspaces().await?;
         let wsnode = tree
             .find(|n| n.is_workspace() && n.iter().any(|n| n.id == self.id))
-            .ok_or(anyhow!(format!(
-                "no workspace found for node with id {}",
-                self.id
-            )))?;
+            .ok_or_else(|| anyhow!(format!("no workspace found for node with id {}", self.id)))?;
         workspaces
             .iter()
             .find(|w| w.id == wsnode.id)
-            .ok_or(anyhow!(format!(
-                "hmm no workspace found with id {}",
-                wsnode.id
-            )))
+            .ok_or_else(|| anyhow!(format!("hmm no workspace found with id {}", wsnode.id)))
             .cloned()
     }
 
-    async fn get_parent(&self) -> Result<Node> {
+    async fn get_parent(&self) -> Result<Self> {
         let mut connection = Connection::new().await?;
         let tree = connection.get_tree().await?;
         tree.find(|n| n.nodes.iter().any(|n| n.id == self.id))

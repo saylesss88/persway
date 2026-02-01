@@ -11,14 +11,14 @@ categories = ["asynchronous", "concurrency", "network-programming"]
 keywords = ["sway", "swaywm", "swayipc", "ipc", "async"]
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
+clap = {version = "4.5", features = ["derive"]}
 log = "0.4"
-either = "1"
-env_logger = "0.11"
-swayipc-async = "2.0.4"
-swayipc-types = "1.4.1"
-async-std = { version = "1.13", features = ["attributes"]}
-signal-hook-async-std = "0.2"
-signal-hook = "0.3"
-anyhow = "1"
-futures = "0.3"
+either = "1.15.0"
+env_logger = "0.11.8"
+swayipc-async = "3.0.0"
+swayipc-types = "2.0.1"
+async-std = {version = "1.13.2", features = ["attributes"]}
+signal-hook-async-std = "0.4.0"
+signal-hook = "0.4.3"
+anyhow = "1.0.100"
+futures = "0.3.31"
