@@ -101,10 +101,15 @@ impl StackMain {
 
                 let cmd = format!(
                     "[con_id={}] mark --add {}; [con_id={}] focus; move container to mark {}; [con_mark={}] unmark {}; [con_id={}] focus; swap container with con_id {}; [con_id={}] focus",
-                          stack.id, stack_mark,
-                          event.container.id, stack_mark,
-                          stack_mark, stack_mark,
-                          main.id, event.container.id, event.container.id
+                    stack.id,
+                    stack_mark,
+                    event.container.id,
+                    stack_mark,
+                    stack_mark,
+                    stack_mark,
+                    main.id,
+                    event.container.id,
+                    event.container.id
                 );
 
                 log::debug!("new_window: {cmd}");
@@ -125,36 +130,37 @@ impl StackMain {
 
         let wstree = tree.find_as_ref(|n| n.id == ws.id).unwrap();
 
-        if wstree.nodes.len() == 1 &&
-            let Some(stack) = wstree.nodes.iter().find(|n| n.id != event.container.id) {
-                let stack_current = stack
-                    .find_as_ref(|n| n.is_window() && n.focused)
-                    .unwrap_or_else(|| {
-                        stack
-                            .find_as_ref(|n| n.visible.unwrap_or(false))
-                            .expect("stack should have a visible node")
-                    });
+        if wstree.nodes.len() == 1
+            && let Some(stack) = wstree.nodes.iter().find(|n| n.id != event.container.id)
+        {
+            let stack_current = stack
+                .find_as_ref(|n| n.is_window() && n.focused)
+                .unwrap_or_else(|| {
+                    stack
+                        .find_as_ref(|n| n.visible.unwrap_or(false))
+                        .expect("stack should have a visible node")
+                });
 
-                let cmd = if wstree.iter().filter(|n| n.is_window()).count() == 1 {
-                    log::debug!("on_close_window, count 1, stack_id: {}", stack_current.id);
-                    format!(
-                        "[con_id={}] focus; layout splith; move up",
-                        stack_current.id
-                    )
-                } else {
-                    log::debug!(
-                        "on_close_window, count more than 1, stack_id: {}",
-                        stack_current.id
-                    );
-                    format!(
-                        "[con_id={}] focus; move right; resize set width {}",
-                        stack_current.id, self.size
-                    )
-                };
-                log::debug!("close_window: {cmd}");
-                self.connection.run_command(cmd).await?;
-            }
-        
+            let cmd = if wstree.iter().filter(|n| n.is_window()).count() == 1 {
+                log::debug!("on_close_window, count 1, stack_id: {}", stack_current.id);
+                format!(
+                    "[con_id={}] focus; layout splith; move up",
+                    stack_current.id
+                )
+            } else {
+                log::debug!(
+                    "on_close_window, count more than 1, stack_id: {}",
+                    stack_current.id
+                );
+                format!(
+                    "[con_id={}] focus; move right; resize set width {}",
+                    stack_current.id, self.size
+                )
+            };
+            log::debug!("close_window: {cmd}");
+            self.connection.run_command(cmd).await?;
+        }
+
         Ok(())
     }
     async fn on_move_window(&mut self, event: &WindowEvent) -> Result<()> {

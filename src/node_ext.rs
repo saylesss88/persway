@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use swayipc_async::{Connection, Node, NodeLayout, NodeType, Workspace};
 
 pub enum RefinedNodeType {
@@ -162,9 +162,9 @@ impl NodeExt for Node {
                     RefinedNodeType::FloatingWindow
                 } else {
                     panic!(
-                            "Boom, don't know what type of node this is:\nid: {}\nnode_type: {:?}\n{:?}",
-                            self.id, self.node_type, self
-                        )
+                        "Boom, don't know what type of node this is:\nid: {}\nnode_type: {:?}\n{:?}",
+                        self.id, self.node_type, self
+                    )
                 }
             }
         }

@@ -13,12 +13,11 @@ fn should_skip_rename_of_workspace(workspace: &Workspace) -> bool {
 }
 
 fn get_app_name(event: &WindowEvent) -> Option<String> {
-    let app_id =
-        event
-            .container
-            .app_id
-            .as_ref()
-            .and_then(|id| if id.is_empty() { None } else { Some(id) });
+    let app_id = event
+        .container
+        .app_id
+        .as_ref()
+        .and_then(|id| if id.is_empty() { None } else { Some(id) });
 
     let name: Option<String> = event.container.name.as_ref().and_then(|name| {
         if name.is_empty() {

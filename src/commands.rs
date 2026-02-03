@@ -1,4 +1,4 @@
-use crate::layout::{StackLayout, WorkspaceLayout, STACK_MAIN_DEFAULT_SIZE};
+use crate::layout::{STACK_MAIN_DEFAULT_SIZE, StackLayout, WorkspaceLayout};
 
 #[derive(clap::Parser, Debug)]
 pub struct DaemonArgs {

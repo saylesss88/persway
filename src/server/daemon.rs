@@ -1,12 +1,12 @@
 use super::message_handler::MessageHandler;
+use crate::Args;
 use crate::commands::PerswayCommand;
 use crate::layout::WorkspaceLayout;
-use crate::Args;
 use crate::{commands::DaemonArgs, utils};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
-use futures::channel::mpsc;
 use futures::SinkExt;
+use futures::channel::mpsc;
 use futures::{select, stream::StreamExt}; // Keep these for sway_events and receiver
 use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals; // CHANGED: tokio version
