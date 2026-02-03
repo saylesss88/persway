@@ -6,10 +6,10 @@
 }: rec {
   name = "Rust application";
   languages.rust.enable = true;
-  languages.rust.toolchain = inputs.fenix.packages.${pkgs.system}.default.toolchain;
+  languages.rust.toolchain = inputs.fenix.packages.${pkgs.stdenv.hostPlatform.system}.default.toolchain;
   languages.nix.enable = true;
   packages = with pkgs; [
-    alejandra
+    nixfmt
     taplo
   ];
   enterShell = ansiEscape ''
