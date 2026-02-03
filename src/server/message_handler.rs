@@ -1,8 +1,8 @@
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use anyhow::Result;
-use async_std::task;
 use swayipc_async::{Connection, WindowEvent};
+use tokio::task;
 
 use super::command_handlers;
 use super::event_handlers;
@@ -110,7 +110,7 @@ impl MessageHandler {
                                 );
                                 log::debug!("relayout closure cmd: {cmd}");
                                 conn.run_command(cmd).await?;
-                                task::sleep(Duration::from_millis(50)).await;
+                                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                             }
                             Ok(())
                         },
