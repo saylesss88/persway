@@ -1,3 +1,7 @@
+[![Nix Flake](https://img.shields.io/badge/Nix_Flake-Geared-dddd00?logo=nixos&logoColor=white)](https://nixos.org/manual/nix/stable/command-ref/new-cli/nix3-flake.html)
+
+[![Nix](https://img.shields.io/badge/Nix-5277C3?style=flat&logo=nixos&logoColor=white)](https://nixos.org)
+
 # Persway-Tokio
 
 [Original Video Demo](https://user-images.githubusercontent.com/28332/223278211-ba3943ee-becc-45e5-ae0e-4f1a121a6f17.mp4)
