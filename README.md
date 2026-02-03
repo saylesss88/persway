@@ -57,6 +57,8 @@ environment.systemPackages = [
 ];
 ```
 
+- Pass `inputs` through `specialArgs` in your `flake.nix`
+
 ---
 
 ## Setup & Configuration
@@ -91,9 +93,27 @@ exec persway daemon \
   --default-layout stack_main
 ```
 
-2. **Key Bindings**
+**Declarative Setup for NixOS**
 
-Bind keys to control layout and focus. Add these to your ~/.config/sway/config:
+```nix
+# sway.nix
+startup = [
+  {
+    command = "exec persway daemon -w -e '[tiling] opacity 1' -f '[tiling] opacity 0.95; opacity 1' -l 'mark --add _prev' --default-layout spiral";
+  }
+];
+```
+
+- You can set this and forget it and you will have spiral spawning windows
+  (First spawn is vertical, next is horizontal), and different shading for
+  focused and unfocused windows.
+
+You can also use an `exec` if you prefer.
+
+2. **Key Bindings (Optional)**
+
+Bind keys to control layout and focus. Add these to your
+`~/.config/sway/config`:
 
 ```text
 # Layout Rotation & Focus
@@ -189,4 +209,5 @@ Options:
 
 ## License
 
-Persway-Tokio is released under the MIT license.
+Persway-Tokio is released under the
+[MIT license](https://github.com/saylesss88/persway/blob/main/LICENSE).
