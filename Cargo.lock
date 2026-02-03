@@ -455,8 +455,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "persway"
-version = "0.6.2"
+name = "persway-tokio"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
