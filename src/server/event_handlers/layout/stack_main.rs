@@ -125,8 +125,8 @@ impl StackMain {
 
         let wstree = tree.find_as_ref(|n| n.id == ws.id).unwrap();
 
-        if wstree.nodes.len() == 1 {
-            if let Some(stack) = wstree.nodes.iter().find(|n| n.id != event.container.id) {
+        if wstree.nodes.len() == 1 &&
+            let Some(stack) = wstree.nodes.iter().find(|n| n.id != event.container.id) {
                 let stack_current = stack
                     .find_as_ref(|n| n.is_window() && n.focused)
                     .unwrap_or_else(|| {
@@ -154,7 +154,7 @@ impl StackMain {
                 log::debug!("close_window: {cmd}");
                 self.connection.run_command(cmd).await?;
             }
-        }
+        
         Ok(())
     }
     async fn on_move_window(&mut self, event: &WindowEvent) -> Result<()> {
@@ -200,19 +200,19 @@ impl WindowEventHandler for StackMain {
                 log::debug!("stack_main handler handling event: {:?}", event.change);
                 if let Err(e) = self.on_new_window(&event).await {
                     log::error!("stack_main layout err: {e}");
-                };
+                }
             }
             WindowChange::Close => {
                 log::debug!("stack_main handler handling event: {:?}", event.change);
                 if let Err(e) = self.on_close_window(&event).await {
                     log::error!("stack_main layout err: {e}");
-                };
+                }
             }
             WindowChange::Move => {
                 log::debug!("stack_main handler handling event: {:?}", event.change);
                 if let Err(e) = self.on_move_window(&event).await {
                     log::error!("stack_main layout err: {e}");
-                };
+                }
             }
             WindowChange::Floating => {
                 log::debug!("stack_main handler handling event: {:?}", event.change);
@@ -223,7 +223,7 @@ impl WindowEventHandler for StackMain {
                 if event.container.is_floating() {
                     if let Err(e) = self.on_close_window(&event).await {
                         log::error!("stack_main layout err: {e}");
-                    };
+                    }
                 } else if let Err(e) = self.on_new_window(&event).await {
                     log::error!("stack_main layout err: {e}");
                 }

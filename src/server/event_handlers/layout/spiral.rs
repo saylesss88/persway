@@ -62,7 +62,7 @@ impl WindowEventHandler for Spiral {
             WindowChange::Focus => {
                 if let Err(e) = self.layout(*event).await {
                     log::error!("spiral manager, layout err: {e}");
-                };
+                }
             }
             _ => log::debug!("spiral manager, not handling event: {:?}", event.change),
         }
