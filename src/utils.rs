@@ -1,6 +1,6 @@
 use crate::node_ext::NodeExt;
 use anyhow::{Context, Result};
-use async_std::task;
+use std::thread::sleep;
 use std::{fmt::Write, future::Future, time::Duration};
 use swayipc_async::{Connection, Node, Workspace};
 
@@ -81,10 +81,10 @@ where
     .expect("Failed to write string");
     log::debug!("relayout before layout closure: {cmd}");
     connection.run_command(cmd).await?;
-    task::sleep(Duration::from_millis(50)).await;
+    sleep(Duration::from_millis(50));
     let closure_conn = Connection::new().await?;
     f(closure_conn, ws_num, ws.id, output.id, windows).await?;
-    task::sleep(Duration::from_millis(50)).await;
+    sleep(Duration::from_millis(50));
     let workspaces = connection.get_workspaces().await?;
     let focused_workspace_after_closure = workspaces
         .iter()
