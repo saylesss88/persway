@@ -29,3 +29,11 @@ futures = "0.3.31"
 [[bin]]
 name = "persway"
 path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+debug = false
