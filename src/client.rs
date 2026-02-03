@@ -1,20 +1,27 @@
-use std::net::Shutdown;
-use std::str;
-
-use crate::utils;
 use anyhow::Result;
-use async_std::prelude::*;
-use async_std::{io::ReadExt, os::unix::net::UnixStream};
+use std::path::Path;
+use tokio::io::AsyncWriteExt;
+use tokio::net::UnixStream;
 
-pub async fn send(socket_path: Option<String>, msg: &str) -> Result<()> {
-    log::debug!("sending message: '{msg}'");
-    let socket_path = utils::get_socket_path(socket_path);
-    let mut stream = UnixStream::connect(&socket_path).await?;
-    stream.write_all(msg.as_bytes()).await?;
-    stream.shutdown(Shutdown::Write)?;
-    let mut response = String::new();
-    stream.read_to_string(&mut response).await?;
-    stream.shutdown(Shutdown::Read)?;
-    log::info!("-> {response}");
+// Assuming you have a utils module available, otherwise use std::env
+use crate::utils;
+
+pub async fn send<P: AsRef<Path>>(socket_path: Option<P>, command: &str) -> Result<()> {
+    // FIX: Use map_or_else to satisfy Clippy
+    let path = socket_path.map_or_else(
+        // 1. Default case (None) - runs if socket_path is None
+        || {
+            // Try to get path from utils, or fallback to a sensible default
+            // If utils::get_socket_path returns a String, we convert to PathBuf
+            utils::get_socket_path(None).into()
+        },
+        // 2. Map case (Some) - runs if socket_path is Some
+        |p| p.as_ref().to_path_buf(),
+    );
+
+    let mut stream = UnixStream::connect(path).await?;
+    stream.write_all(command.as_bytes()).await?;
+    stream.shutdown().await?;
+
     Ok(())
 }
