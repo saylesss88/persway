@@ -1,3 +1,4 @@
+#![allow(clippy::multiple_crate_versions)]
 use anyhow::Result;
 use env_logger::Env;
 mod client;
@@ -23,8 +24,9 @@ struct Args {
     socket_path: Option<String>,
 }
 
-#[async_std::main]
-async fn main() -> Result<()> {
+#[tokio::main]
+#[doc(hidden)]
+pub async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let args = Args::parse();
     if let commands::PerswayCommand::Daemon(daemon_args) = args.command {
