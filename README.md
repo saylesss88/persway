@@ -28,6 +28,8 @@ supports two layouts: `spiral` and `stack_main`.
 Persway talks to itself through a socket and listens to sway events through the
 sway socket making it a flexible tool for manipulating the Sway Compositor.
 
+---
+
 ## Installation
 
 ### From Source (Cargo)
@@ -35,6 +37,8 @@ sway socket making it a flexible tool for manipulating the Sway Compositor.
 ```bash
 cargo install --git https://github.com/saylesss88/persway
 ```
+
+---
 
 ## Nix Flake
 
@@ -45,15 +49,37 @@ enabled, you can use the flake directly from this repository:
 inputs.persway.url = "github:saylesss88/persway";
 ```
 
+And in `environment.systemPackages`:
+
+```nix
+environment.systemPackages = [
+  inputs.persway.packages.{pkgs.stdenv.hostPlatform.system}.default
+];
+```
+
+---
+
 ## Setup & Configuration
 
 To set up Persway, you need to run the daemon using the `persway daemon`
 subcommand. Once the daemon is running, you can use the client portion of
 Persway to communicate with it (e.g., binding keys to layout movement).
 
-1. Start the Daemon
+1. **Start the Daemon**
 
 Add this to your sway config or autostart script:
+
+```bash
+# Example: Auto-renaming workspaces, handling opacity focus, and marking windows
+exec persway daemon \
+  -w \
+  -e '[tiling] opacity 1' \
+  -f '[tiling] opacity 0.95; opacity 1' \
+  -l 'mark --add _prev' \
+  --default-layout spiral
+```
+
+**Or for the Master Stack layout**:
 
 ```bash
 # Example: Auto-renaming workspaces, handling opacity focus, and marking windows
@@ -65,7 +91,7 @@ exec persway daemon \
   --default-layout stack_main
 ```
 
-2. Key Bindings
+2. **Key Bindings**
 
 Bind keys to control layout and focus. Add these to your ~/.config/sway/config:
 
@@ -82,6 +108,8 @@ bindsym Mod4+v exec persway change-layout manual
 bindsym Mod4+x exec persway change-layout stack-main --size 70
 bindsym Mod4+z exec persway change-layout spiral
 ```
+
+---
 
 **CLI Reference**
 
@@ -104,6 +132,8 @@ Options:
   -h, --help                Print help
   -V, --version             Print version
 ```
+
+---
 
 **Daemon Options**
 
@@ -130,6 +160,8 @@ Options:
           Example: '[tiling] opacity 1'
 ```
 
+---
+
 **Change Layout**
 
 ```text
@@ -141,6 +173,8 @@ Commands:
   manual      Standard Sway manual tiling
 ```
 
+---
+
 **Stack Main Options**
 
 ```text
@@ -150,6 +184,8 @@ Options:
   -s, --size <PERCENT>      Size of the main area [default: 70]
   -l, --stack-layout <TYPE> Layout of the stack: tabbed, tiled, stacked [default: stacked]
 ```
+
+---
 
 ## License
 
