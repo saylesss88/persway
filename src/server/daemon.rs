@@ -17,7 +17,7 @@ use tokio::net::{UnixListener, UnixStream};
 
 pub type Sender<T> = mpsc::UnboundedSender<T>;
 
-// We only use the channel for external CLI commands now
+// Only use the channel for external CLI commands
 pub enum Message {
     CommandEvent(PerswayCommand),
 }
@@ -81,15 +81,13 @@ impl Daemon {
     pub async fn run(&mut self) -> Result<()> {
         // Initialize MessageHandler asynchronously (it needs a connection)
         if let Some((layout, renaming, focus, leave)) = self.init_args.take() {
-            // YOU NEED TO UPDATE MessageHandler::new TO BE ASYNC AND RETURN Result
-            // It should do: let conn = Connection::new().await?; Ok(Self { conn, ... })
             self.message_handler = Some(MessageHandler::new(layout, renaming, focus, leave).await?);
         }
 
         let signals = Signals::new([SIGHUP, SIGINT, SIGQUIT, SIGTERM])?;
         tokio::spawn(Self::handle_signals(signals, self.on_exit.clone()));
 
-        // Subscribe to Window AND Workspace events (Workspace often needed for focus logic)
+        // Subscribe to Window AND Workspace events
         let subs = [EventType::Window, EventType::Workspace];
         let mut sway_events = Connection::new().await?.subscribe(&subs).await?.fuse();
 
@@ -137,7 +135,7 @@ impl Daemon {
                             
                         },
                         Ok(Event::Workspace(_event)) => {
-                            // Add workspace event handling if your logic relies on it
+                            // Add workspace event handling
                             // if let Some(handler) = &mut self.message_handler {
                             //    handler.handle_workspace_event(event).await?;
                             // }

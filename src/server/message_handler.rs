@@ -16,7 +16,6 @@ pub struct WorkspaceConfig {
 
 #[derive(Debug)]
 pub struct MessageHandler {
-    // ADDED: Persistent connection
     connection: Connection,
     workspace_config: HashMap<i32, WorkspaceConfig>,
     default_layout: WorkspaceLayout,
@@ -26,7 +25,6 @@ pub struct MessageHandler {
 }
 
 impl MessageHandler {
-    // CHANGED: Async init to establish connection once
     pub async fn new(
         default_layout: WorkspaceLayout,
         workspace_renaming: bool,
@@ -55,7 +53,6 @@ impl MessageHandler {
     pub async fn handle_event(&mut self, event: Box<WindowEvent>) -> Result<()> {
         log::debug!("controller.handle_event: {:?}", event.change);
 
-        // CHANGED: Use persistent connection instead of creating new one
         let ws = utils::get_focused_workspace(&mut self.connection).await?;
 
         match &self.get_workspace_config(ws.num).layout {
@@ -94,7 +91,7 @@ impl MessageHandler {
     pub async fn handle_command(&mut self, cmd: PerswayCommand) -> Result<()> {
         log::debug!("controller.handle_command: {cmd:?}");
 
-        // CHANGED: Use persistent connection
+        // Use persistent connection
         let ws = utils::get_focused_workspace(&mut self.connection).await?;
 
         let current_ws_config = self.get_workspace_config(ws.num);
@@ -115,11 +112,6 @@ impl MessageHandler {
                     log::debug!("change layout of ws {} to {}", ws.num, layout);
                     log::debug!("start relayout of ws {}", ws.num);
 
-                    // NOTE: This spawns a task which needs a connection.
-                    // Since it runs in background, it MUST create its own connection
-                    // or take ownership of a clone. Connection is likely NOT Clone.
-                    // So creating a new connection inside this task is actually correct/necessary
-                    // because it runs concurrently.
                     task::spawn(utils::relayout_workspace(
                         ws.num,
                         |mut conn, ws_num, _old_ws_id, _output_id, windows| async move {
@@ -137,8 +129,6 @@ impl MessageHandler {
                     ));
                 }
             }
-            // For these other commands, if they create their own connections internally,
-            // that is okay for now as they are infrequent user commands.
             PerswayCommand::StackFocusNext => {
                 if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
                     let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
