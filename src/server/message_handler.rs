@@ -6,6 +6,8 @@ use tokio::task;
 
 use super::command_handlers;
 use super::event_handlers;
+// Make sure to import the WindowEventHandler trait if needed for handle() method visibility
+use super::event_handlers::traits::WindowEventHandler;
 
 use crate::{commands::PerswayCommand, layout::WorkspaceLayout, utils};
 
@@ -20,8 +22,11 @@ pub struct MessageHandler {
     workspace_config: HashMap<i32, WorkspaceConfig>,
     default_layout: WorkspaceLayout,
     workspace_renaming: bool,
-    on_window_focus: Option<String>,
-    on_window_focus_leave: Option<String>,
+    // We don't strictly need these two strings here anymore since the handler owns them,
+    // but keeping them doesn't hurt if you use them elsewhere.
+    // on_window_focus: Option<String>,
+    // on_window_focus_leave: Option<String>,
+    window_focus_handler: event_handlers::misc::window_focus::WindowFocus,
 }
 
 impl MessageHandler {
@@ -31,14 +36,20 @@ impl MessageHandler {
         on_window_focus: Option<String>,
         on_window_focus_leave: Option<String>,
     ) -> Result<Self> {
+        let window_focus_handler = event_handlers::misc::window_focus::WindowFocus::new(
+            on_window_focus,       // move, no clone
+            on_window_focus_leave, // move, no clone
+        )
+        .await?;
+
         let connection = Connection::new().await?;
+
         Ok(Self {
             connection,
             workspace_config: HashMap::new(),
             default_layout,
             workspace_renaming,
-            on_window_focus,
-            on_window_focus_leave,
+            window_focus_handler,
         })
     }
 
@@ -76,22 +87,15 @@ impl MessageHandler {
             event_handlers::misc::workspace_renamer::WorkspaceRenamer::handle(event.clone()).await;
         }
 
-        // Note: WindowFocus::run might create its own connection internally if it's a static method.
-        // You might want to pass &mut self.connection to it if possible,
-        // but for now let's just fix the MessageHandler part.
-        event_handlers::misc::window_focus::WindowFocus::run(
-            event.clone(),
-            self.on_window_focus.clone(),
-            self.on_window_focus_leave.clone(),
-        )
-        .await;
+        // FIX 2: Use the persistent handler instance
+        // Remove the old WindowFocus::run call
+        self.window_focus_handler.handle(event).await;
+
         Ok(())
     }
 
     pub async fn handle_command(&mut self, cmd: PerswayCommand) -> Result<()> {
         log::debug!("controller.handle_command: {cmd:?}");
-
-        // Use persistent connection
         let ws = utils::get_focused_workspace(&mut self.connection).await?;
 
         let current_ws_config = self.get_workspace_config(ws.num);
