@@ -3,7 +3,7 @@ use crate::commands::PerswayCommand;
 use crate::layout::WorkspaceLayout;
 use crate::Args;
 use crate::{commands::DaemonArgs, utils};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::SinkExt;
@@ -11,7 +11,7 @@ use futures::{select, stream::StreamExt};
 use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals;
 use std::process::exit;
-use swayipc_async::{Connection, Event, EventType, WindowEvent};
+use swayipc_async::{Connection, Event, EventType};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 
@@ -68,11 +68,11 @@ impl Daemon {
 
     async fn handle_signals(mut signals: Signals, on_exit: Option<String>) {
         if let Some(_signal) = signals.next().await {
-            if let Ok(mut commands) = Connection::new().await {
-                if let Some(exit_cmd) = on_exit {
+            if let Ok(mut commands) = Connection::new().await &&
+                let Some(exit_cmd) = on_exit {
                     log::debug!("Executing exit command: {exit_cmd}");
                     let _ = commands.run_command(exit_cmd).await;
-                }
+                
             }
             exit(0)
         }
@@ -102,7 +102,7 @@ impl Daemon {
         let listener = UnixListener::bind(&self.socket_path)?;
 
         // Channel for CLI commands only
-        let (mut sender, receiver) = mpsc::unbounded();
+        let (sender, receiver) = mpsc::unbounded();
         let mut receiver = receiver.fuse();
 
         let (incoming_tx, incoming_rx) = mpsc::unbounded();
@@ -130,13 +130,13 @@ impl Daemon {
                 event = sway_events.select_next_some() => {
                     match event {
                         Ok(Event::Window(event)) => {
-                            if let Some(handler) = &mut self.message_handler {
-                                if let Err(e) = handler.handle_event(event).await {
+                            if let Some(handler) = &mut self.message_handler &&
+                                let Err(e) = handler.handle_event(event).await {
                                     log::error!("Error handling window event: {e}");
                                 }
-                            }
+                            
                         },
-                        Ok(Event::Workspace(event)) => {
+                        Ok(Event::Workspace(_event)) => {
                             // Add workspace event handling if your logic relies on it
                             // if let Some(handler) = &mut self.message_handler {
                             //    handler.handle_workspace_event(event).await?;
@@ -157,7 +157,7 @@ impl Daemon {
                     match message {
                         Message::CommandEvent(command) => {
                             if let Some(handler) = &mut self.message_handler {
-                                log::debug!("Executing CLI command: {:?}", command);
+                                log::debug!("Executing CLI command: {command:?}");
                                 if let Err(e) = handler.handle_command(command).await {
                                     log::error!("Command execution failed: {e}");
                                 }
