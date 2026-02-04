@@ -1,12 +1,12 @@
 use super::message_handler::MessageHandler;
+use crate::Args;
 use crate::commands::PerswayCommand;
 use crate::layout::WorkspaceLayout;
-use crate::Args;
 use crate::{commands::DaemonArgs, utils};
 use anyhow::Result;
 use clap::Parser;
-use futures::channel::mpsc;
 use futures::SinkExt;
+use futures::channel::mpsc;
 use futures::{select, stream::StreamExt};
 use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals;
@@ -68,11 +68,11 @@ impl Daemon {
 
     async fn handle_signals(mut signals: Signals, on_exit: Option<String>) {
         if let Some(_signal) = signals.next().await {
-            if let Ok(mut commands) = Connection::new().await &&
-                let Some(exit_cmd) = on_exit {
-                    log::debug!("Executing exit command: {exit_cmd}");
-                    let _ = commands.run_command(exit_cmd).await;
-                
+            if let Ok(mut commands) = Connection::new().await
+                && let Some(exit_cmd) = on_exit
+            {
+                log::debug!("Executing exit command: {exit_cmd}");
+                let _ = commands.run_command(exit_cmd).await;
             }
             exit(0)
         }
@@ -132,7 +132,7 @@ impl Daemon {
                                 let Err(e) = handler.handle_event(event).await {
                                     log::error!("Error handling window event: {e}");
                                 }
-                            
+
                         },
                         Ok(Event::Workspace(_event)) => {
                             // Add workspace event handling

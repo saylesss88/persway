@@ -52,7 +52,6 @@ impl WindowEventHandler for WindowFocus {
                 let focus_cmd = self.window_focus_cmd.clone();
 
                 // 1. Apply 'leave' command to the PREVIOUS window
-                // This now works because self.previously_focused_id persists!
                 if let Some(prev_id) = self.previously_focused_id {
                     // optimization: don't run leave if focusing the same window
                     if prev_id != event.container.id {
@@ -62,7 +61,6 @@ impl WindowEventHandler for WindowFocus {
                 }
 
                 // 2. Apply 'focus' command to the NEW window
-                // passing None targets the currently focused window (event.container.id)
                 self.run_cmd(focus_cmd, "on_window_focus", None).await;
 
                 // 3. Update state for next time
@@ -71,11 +69,11 @@ impl WindowEventHandler for WindowFocus {
             WindowChange::Close => {
                 // If the closed window was the one we were tracking, clear it
                 // so we don't try to run commands on a dead ID later.
-                if let Some(prev_id) = self.previously_focused_id &&
-                    prev_id == event.container.id {
-                        self.previously_focused_id = None;
-                    }
-                
+                if let Some(prev_id) = self.previously_focused_id
+                    && prev_id == event.container.id
+                {
+                    self.previously_focused_id = None;
+                }
             }
             _ => log::debug!(
                 "workspace name manager, not handling event: {:?}",
