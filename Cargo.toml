@@ -1,6 +1,6 @@
 [package]
 name = "persway-tokio"
-version = "0.7.0" # successor to persway 0.6.2
+version = "0.8.0" # successor to persway 0.6.2
 authors = [
 	"John Axel Eriksson <john@insane.se>",
 	"T. Sawyer <saylesss87@proton.me>",
