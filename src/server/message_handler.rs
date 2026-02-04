@@ -16,6 +16,8 @@ pub struct WorkspaceConfig {
 
 #[derive(Debug)]
 pub struct MessageHandler {
+    // ADDED: Persistent connection
+    connection: Connection,
     workspace_config: HashMap<i32, WorkspaceConfig>,
     default_layout: WorkspaceLayout,
     workspace_renaming: bool,
@@ -24,19 +26,22 @@ pub struct MessageHandler {
 }
 
 impl MessageHandler {
-    pub fn new(
+    // CHANGED: Async init to establish connection once
+    pub async fn new(
         default_layout: WorkspaceLayout,
         workspace_renaming: bool,
         on_window_focus: Option<String>,
         on_window_focus_leave: Option<String>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        let connection = Connection::new().await?;
+        Ok(Self {
+            connection,
             workspace_config: HashMap::new(),
             default_layout,
             workspace_renaming,
             on_window_focus,
             on_window_focus_leave,
-        }
+        })
     }
 
     pub fn get_workspace_config(&mut self, ws_num: i32) -> &WorkspaceConfig {
@@ -49,8 +54,10 @@ impl MessageHandler {
 
     pub async fn handle_event(&mut self, event: Box<WindowEvent>) -> Result<()> {
         log::debug!("controller.handle_event: {:?}", event.change);
-        let mut conn = Connection::new().await?;
-        let ws = utils::get_focused_workspace(&mut conn).await?;
+
+        // CHANGED: Use persistent connection instead of creating new one
+        let ws = utils::get_focused_workspace(&mut self.connection).await?;
+
         match &self.get_workspace_config(ws.num).layout {
             WorkspaceLayout::Spiral => {
                 log::debug!("handling event via spiral manager");
@@ -71,6 +78,10 @@ impl MessageHandler {
         if self.workspace_renaming {
             event_handlers::misc::workspace_renamer::WorkspaceRenamer::handle(event.clone()).await;
         }
+
+        // Note: WindowFocus::run might create its own connection internally if it's a static method.
+        // You might want to pass &mut self.connection to it if possible,
+        // but for now let's just fix the MessageHandler part.
         event_handlers::misc::window_focus::WindowFocus::run(
             event.clone(),
             self.on_window_focus.clone(),
@@ -79,10 +90,13 @@ impl MessageHandler {
         .await;
         Ok(())
     }
+
     pub async fn handle_command(&mut self, cmd: PerswayCommand) -> Result<()> {
         log::debug!("controller.handle_command: {cmd:?}");
-        let mut conn = Connection::new().await?;
-        let ws = utils::get_focused_workspace(&mut conn).await?;
+
+        // CHANGED: Use persistent connection
+        let ws = utils::get_focused_workspace(&mut self.connection).await?;
+
         let current_ws_config = self.get_workspace_config(ws.num);
         match cmd {
             PerswayCommand::ChangeLayout { layout } => {
@@ -100,6 +114,12 @@ impl MessageHandler {
                         });
                     log::debug!("change layout of ws {} to {}", ws.num, layout);
                     log::debug!("start relayout of ws {}", ws.num);
+
+                    // NOTE: This spawns a task which needs a connection.
+                    // Since it runs in background, it MUST create its own connection
+                    // or take ownership of a clone. Connection is likely NOT Clone.
+                    // So creating a new connection inside this task is actually correct/necessary
+                    // because it runs concurrently.
                     task::spawn(utils::relayout_workspace(
                         ws.num,
                         |mut conn, ws_num, _old_ws_id, _output_id, windows| async move {
@@ -117,6 +137,8 @@ impl MessageHandler {
                     ));
                 }
             }
+            // For these other commands, if they create their own connections internally,
+            // that is okay for now as they are infrequent user commands.
             PerswayCommand::StackFocusNext => {
                 if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
                     let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
