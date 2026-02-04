@@ -1,31 +1,34 @@
 use super::message_handler::MessageHandler;
-use crate::Args;
 use crate::commands::PerswayCommand;
 use crate::layout::WorkspaceLayout;
+use crate::Args;
 use crate::{commands::DaemonArgs, utils};
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use clap::Parser;
-use futures::SinkExt;
 use futures::channel::mpsc;
-use futures::{select, stream::StreamExt}; // Keep these for sway_events and receiver
+use futures::SinkExt;
+use futures::{select, stream::StreamExt};
 use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
-use signal_hook_tokio::Signals; // CHANGED: tokio version
+use signal_hook_tokio::Signals;
 use std::process::exit;
 use swayipc_async::{Connection, Event, EventType, WindowEvent};
-use tokio::io::{AsyncReadExt, AsyncWriteExt}; // CHANGED: tokio IO traits
-use tokio::net::{UnixListener, UnixStream}; // CHANGED: tokio net types
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{UnixListener, UnixStream};
 
 pub type Sender<T> = mpsc::UnboundedSender<T>;
 
+// We only use the channel for external CLI commands now
 pub enum Message {
-    WindowEvent(Box<WindowEvent>),
     CommandEvent(PerswayCommand),
 }
 
 pub struct Daemon {
     on_exit: Option<String>,
     socket_path: String,
-    message_handler: MessageHandler,
+    // Option allows us to take it out if needed, but mainly for async init
+    message_handler: Option<MessageHandler>,
+    // Store init args temporarily until run() is called
+    init_args: Option<(WorkspaceLayout, bool, Option<String>, Option<String>)>,
 }
 
 impl Daemon {
@@ -41,156 +44,145 @@ impl Daemon {
             on_exit,
             ..
         } = args;
-        {
-            let default_layout = match default_layout {
-                WorkspaceLayout::StackMain { .. } => WorkspaceLayout::StackMain {
-                    size: stack_main_default_size,
-                    stack_layout: stack_main_default_stack_layout,
-                },
-                _ => default_layout,
-            };
-            Self {
-                socket_path,
-                on_exit,
-                message_handler: MessageHandler::new(
-                    default_layout,
-                    workspace_renaming,
-                    on_window_focus,
-                    on_window_focus_leave,
-                ),
-            }
+
+        let final_layout = match default_layout {
+            WorkspaceLayout::StackMain { .. } => WorkspaceLayout::StackMain {
+                size: stack_main_default_size,
+                stack_layout: stack_main_default_stack_layout,
+            },
+            _ => default_layout,
+        };
+
+        Self {
+            socket_path,
+            on_exit,
+            message_handler: None,
+            init_args: Some((
+                final_layout,
+                workspace_renaming,
+                on_window_focus,
+                on_window_focus_leave,
+            )),
         }
     }
 
-    // CHANGED: Using tokio Signals
     async fn handle_signals(mut signals: Signals, on_exit: Option<String>) {
         if let Some(_signal) = signals.next().await {
-            let mut commands = Connection::new().await.unwrap();
-            if let Some(exit_cmd) = on_exit {
-                log::debug!("{exit_cmd}");
-                commands.run_command(exit_cmd).await.unwrap();
+            if let Ok(mut commands) = Connection::new().await {
+                if let Some(exit_cmd) = on_exit {
+                    log::debug!("Executing exit command: {exit_cmd}");
+                    let _ = commands.run_command(exit_cmd).await;
+                }
             }
             exit(0)
         }
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        let signals = Signals::new([SIGHUP, SIGINT, SIGQUIT, SIGTERM])?;
-        let _handle = signals.handle();
-        // CHANGED: tokio::spawn
-        tokio::spawn(Self::handle_signals(signals, self.on_exit.clone()));
-
-        let subs = [EventType::Window];
-        let mut sway_events = Connection::new().await?.subscribe(&subs).await?.fuse();
-
-        // CHANGED: tokio::fs
-        match tokio::fs::remove_file(&self.socket_path).await {
-            Ok(()) => log::debug!("Removed stale socket {}", &self.socket_path),
-            Err(e) => match e.kind() {
-                std::io::ErrorKind::NotFound => log::debug!(
-                    "Couldn't remove stale socket {} as the file didn't exist",
-                    &self.socket_path
-                ),
-                _ => {
-                    log::error!(
-                        "Unable to remove stale socket: {}\\n{:?}",
-                        &self.socket_path,
-                        e
-                    );
-                }
-            },
+        // Initialize MessageHandler asynchronously (it needs a connection)
+        if let Some((layout, renaming, focus, leave)) = self.init_args.take() {
+            // YOU NEED TO UPDATE MessageHandler::new TO BE ASYNC AND RETURN Result
+            // It should do: let conn = Connection::new().await?; Ok(Self { conn, ... })
+            self.message_handler = Some(MessageHandler::new(layout, renaming, focus, leave).await?);
         }
 
-        // CHANGED: tokio UnixListener
+        let signals = Signals::new([SIGHUP, SIGINT, SIGQUIT, SIGTERM])?;
+        tokio::spawn(Self::handle_signals(signals, self.on_exit.clone()));
+
+        // Subscribe to Window AND Workspace events (Workspace often needed for focus logic)
+        let subs = [EventType::Window, EventType::Workspace];
+        let mut sway_events = Connection::new().await?.subscribe(&subs).await?.fuse();
+
+        match tokio::fs::remove_file(&self.socket_path).await {
+            Ok(()) => log::debug!("Removed stale socket {}", &self.socket_path),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+            Err(e) => log::error!("Unable to remove stale socket: {e}"),
+        }
+
         let listener = UnixListener::bind(&self.socket_path)?;
 
+        // Channel for CLI commands only
         let (mut sender, receiver) = mpsc::unbounded();
         let mut receiver = receiver.fuse();
 
-        // CHANGED: Spawn a task to accept connections and feed them to the main loop
-        // via a channel. This avoids "fuse()" issues with Tokio listeners.
         let (incoming_tx, incoming_rx) = mpsc::unbounded();
         let mut incoming_rx = incoming_rx.fuse();
 
+        // Socket Acceptor Task
         tokio::spawn(async move {
             loop {
                 match listener.accept().await {
-                    Ok((stream, addr)) => {
-                        log::debug!("accept: connection from {addr:?}");
+                    Ok((stream, _)) => {
                         if incoming_tx.unbounded_send(stream).is_err() {
-                            break; // Main loop died
+                            break;
                         }
                     }
-                    Err(e) => log::error!("accept error: {e}"),
+                    Err(e) => log::error!("Accept error: {e}"),
                 }
             }
         });
 
+        log::info!("Persway daemon started");
+
         loop {
             select! {
+                // 1. DIRECT EVENT HANDLING (Low Latency)
                 event = sway_events.select_next_some() => {
-                        match event? {
-                            Event::Window(event) => {
-                                log::debug!("select: sway event sending through channel");
-                                sender.send(Message::WindowEvent(event)).await?;
-                                log::debug!("select: sway event sent through channel");
-                            },
-                            _ => unreachable!(),
-                        }
-                },
-                // CHANGED: Receive stream from our acceptor task
-                stream = incoming_rx.select_next_some() => {
-                        log::debug!("select: accepting connection");
-                        // CHANGED: tokio::spawn
-                        tokio::spawn(Self::connection_loop(stream, sender.clone()));
-                        log::debug!("select: connection handled");
-                },
-                message = receiver.select_next_some() => {
-                    log::debug!("select: received message");
-                    match message {
-                        Message::WindowEvent(event) => {
-                          log::debug!("select: handling message window event");
-                          self.message_handler.handle_event(event).await?;
-                          log::debug!("select: handled message window event");
+                    match event {
+                        Ok(Event::Window(event)) => {
+                            if let Some(handler) = &mut self.message_handler {
+                                if let Err(e) = handler.handle_event(event).await {
+                                    log::error!("Error handling window event: {e}");
+                                }
+                            }
                         },
+                        Ok(Event::Workspace(event)) => {
+                            // Add workspace event handling if your logic relies on it
+                            // if let Some(handler) = &mut self.message_handler {
+                            //    handler.handle_workspace_event(event).await?;
+                            // }
+                        }
+                        Err(e) => log::error!("Sway IPC event error: {e}"),
+                        _ => {} // Ignore other events
+                    }
+                },
+
+                // 2. Accept new socket connections
+                stream = incoming_rx.select_next_some() => {
+                    tokio::spawn(Self::connection_loop(stream, sender.clone()));
+                },
+
+                // 3. Handle CLI commands
+                message = receiver.select_next_some() => {
+                    match message {
                         Message::CommandEvent(command) => {
-                          log::debug!("select: handling message command event");
-                          self.message_handler.handle_command(command).await?;
-                          log::debug!("select: handled message command event");
+                            if let Some(handler) = &mut self.message_handler {
+                                log::debug!("Executing CLI command: {:?}", command);
+                                if let Err(e) = handler.handle_command(command).await {
+                                    log::error!("Command execution failed: {e}");
+                                }
+                            }
                         }
                     }
-                    log::debug!("select: handled message");
                 }
-                complete => panic!("Stream-processing stopped unexpectedly"),
             }
         }
     }
 
     async fn connection_loop(mut stream: UnixStream, mut sender: Sender<Message>) -> Result<()> {
         let mut message = String::new();
-        log::debug!("reading incoming msg");
-        // CHANGED: tokio's read_to_string
         match stream.read_to_string(&mut message).await {
-            Ok(_) => {
-                log::debug!("got message: {message}");
-                let args = match Args::try_parse_from(message.split_ascii_whitespace()) {
-                    Ok(args) => args,
-                    Err(e) => {
-                        log::error!("unknown message: {message}\\n{e}");
-                        return Err(anyhow!("unknown message"));
-                    }
-                };
-                log::debug!("sending command through channel");
-                sender.send(Message::CommandEvent(args.command)).await?;
-                log::debug!("writing success message back to client");
-                stream.write_all(b"success\\n").await?;
-            }
-            Err(e) => {
-                log::error!("Invalid UTF-8 sequence: {e}");
-                log::debug!("writing failure message back to client");
-                stream.write_all(b"fail: invalid utf-8 sequence").await?;
-                stream.write_all(b"\\n").await?;
-            }
+            Ok(_) => match Args::try_parse_from(message.split_ascii_whitespace()) {
+                Ok(args) => {
+                    sender.send(Message::CommandEvent(args.command)).await?;
+                    let _ = stream.write_all(b"success\n").await;
+                }
+                Err(e) => {
+                    log::error!("Invalid command: {e}");
+                    let _ = stream.write_all(b"fail: invalid command\n").await;
+                }
+            },
+            Err(e) => log::error!("Socket read error: {e}"),
         }
         Ok(())
     }
