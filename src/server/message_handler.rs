@@ -27,9 +27,6 @@ pub struct MessageHandler {
     rename_handle: Option<task::JoinHandle<()>>,
 }
 
-// Remove Debug derive from MessageHandler since mpsc::UnboundedSender doesn't implement Debug
-// Or manually implement Debug if you need it
-
 impl MessageHandler {
     pub async fn new(
         default_layout: WorkspaceLayout,

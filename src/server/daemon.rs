@@ -135,10 +135,6 @@ impl Daemon {
 
                         },
                         Ok(Event::Workspace(_event)) => {
-                            // Add workspace event handling
-                            // if let Some(handler) = &mut self.message_handler {
-                            //    handler.handle_workspace_event(event).await?;
-                            // }
                         }
                         Err(e) => log::error!("Sway IPC event error: {e}"),
                         _ => {} // Ignore other events

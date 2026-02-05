@@ -130,13 +130,6 @@ impl Spiral {
                 log::debug!("spiral layout: applying change -> {cmd}");
                 self.connection.run_command(cmd).await?;
             }
-            //         let cmd = if node.rect.height > node.rect.width {
-            //             format!("[con_id={}] focus; split v", node.id)
-            //         } else {
-            //             format!("[con_id={}] focus; split h", node.id)
-            //         };
-            //         log::debug!("spiral layout: {cmd}");
-            //         self.connection.run_command(cmd).await?;
         }
 
         Ok(())
