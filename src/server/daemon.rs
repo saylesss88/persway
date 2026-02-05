@@ -1,3 +1,11 @@
+//! Persway daemon module.
+//!
+//! Manages:
+//! - A Unix socket for receiving CLI commands.
+//! - Sway IPC event subscription and handling.
+//! - Signal handling for graceful shutdown.
+//! - Per‑workspace layout management via `MessageHandler`.
+
 use super::message_handler::MessageHandler;
 use crate::Args;
 use crate::commands::PerswayCommand;
@@ -12,26 +20,48 @@ use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals;
 use std::process::exit;
 use swayipc_async::{Connection, Event, EventType};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 
+/// Generic sender type for cross‑task messaging.
 pub type Sender<T> = mpsc::UnboundedSender<T>;
 
-// Only use the channel for external CLI commands
+/// Message type sent over the internal channel.
+///
+/// Currently only used for CLI commands coming from the Unix socket.
+#[derive(Debug)]
 pub enum Message {
+    /// A command received from the `persway` CLI client.
     CommandEvent(PerswayCommand),
 }
 
+/// Persway daemon state.
+///
+/// Runs in the background and:
+/// - Listens for Sway events.
+/// - Handles Unix socket commands.
+/// - Responds to signals (SIGHUP, SIGINT, SIGQUIT, SIGTERM).
 pub struct Daemon {
+    /// Optional command to run when the daemon exits (e.g., reset opacity).
     on_exit: Option<String>,
+    /// Path to the Unix socket used for CLI IPC.
     socket_path: String,
-    // Option allows us to take it out if needed, but mainly for async init
+    /// Message handler that manages workspaces and layouts.
+    ///
+    /// Wrapped in `Option` to allow async initialization in `run()`.
     message_handler: Option<MessageHandler>,
-    // Store init args temporarily until run() is called
+    /// Temporary storage of constructor arguments until `run()` is called.
+    ///
+    /// Holds:
+    /// - The default layout for new workspaces.
+    /// - Whether workspace renaming is enabled.
+    /// - Focus/leave hooks for opacity or marking.
     init_args: Option<(WorkspaceLayout, bool, Option<String>, Option<String>)>,
 }
 
 impl Daemon {
+    /// Construct a new `Daemon` from CLI arguments.
+    ///
+    /// The `message_handler` is left uninitialized; it will be created in `run()`.
     pub fn new(args: DaemonArgs, socket_path: Option<String>) -> Self {
         let socket_path = utils::get_socket_path(socket_path);
         let DaemonArgs {
@@ -66,6 +96,10 @@ impl Daemon {
         }
     }
 
+    /// Handle Unix signals and run the `on_exit` command when triggered.
+    ///
+    /// Waits for the first of `SIGHUP`, `SIGINT`, `SIGQUIT`, or `SIGTERM`,
+    /// then runs the configured `on_exit` command via Sway IPC before exiting.
     async fn handle_signals(mut signals: Signals, on_exit: Option<String>) {
         if let Some(_signal) = signals.next().await {
             if let Ok(mut commands) = Connection::new().await
@@ -74,10 +108,21 @@ impl Daemon {
                 log::debug!("Executing exit command: {exit_cmd}");
                 let _ = commands.run_command(exit_cmd).await;
             }
-            exit(0)
+            exit(0);
         }
     }
 
+    /// Run the daemon’s main loop.
+    ///
+    /// This async method:
+    /// - Initializes the `MessageHandler`.
+    /// - Sets up signal handling.
+    /// - Binds a Unix socket and spawns an acceptor task.
+    /// - Subscribes to Sway `Window` and `Workspace` events.
+    /// - Runs a `select!` loop that dispatches:
+    ///   - Sway events to `message_handler.handle_event`.
+    ///   - New socket connections to `connection_loop`.
+    ///   - CLI commands to `message_handler.handle_command`.
     pub async fn run(&mut self) -> Result<()> {
         // Initialize MessageHandler asynchronously (it needs a connection)
         if let Some((layout, renaming, focus, leave)) = self.init_args.take() {
@@ -130,9 +175,8 @@ impl Daemon {
                         Ok(Event::Window(event)) => {
                             if let Some(handler) = &mut self.message_handler &&
                                 let Err(e) = handler.handle_event(event).await {
-                                    log::error!("Error handling window event: {e}");
-                                }
-
+                                log::error!("Error handling window event: {e}");
+                            }
                         },
                         Ok(Event::Workspace(_event)) => {
                         }
@@ -143,7 +187,12 @@ impl Daemon {
 
                 // 2. Accept new socket connections
                 stream = incoming_rx.select_next_some() => {
-                    tokio::spawn(Self::connection_loop(stream, sender.clone()));
+                    let sender = sender.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = Self::connection_loop(stream, sender).await {
+                            log::error!("Connection loop error: {e}");
+                        }
+                    });
                 },
 
                 // 3. Handle CLI commands
@@ -163,19 +212,40 @@ impl Daemon {
         }
     }
 
-    async fn connection_loop(mut stream: UnixStream, mut sender: Sender<Message>) -> Result<()> {
+    /// Per‑connection loop that reads a single line command from a Unix socket.
+    ///
+    /// Parses the command via `clap::Parser` on `Args`, then sends the resulting
+    /// `PerswayCommand` over `sender` as a `Message::CommandEvent`.
+    ///
+    /// # Behavior
+    /// - On readable line: splits into `Vec<&str>`, parses as `Args`, sends command.
+    /// - On EOF (0 bytes): returns `Ok(())` (connection closed).
+    /// - On invalid command: logs an error and sends `fail: invalid command`.
+    /// - On read/write error: logs an error (no return; caller exits).
+    async fn connection_loop(stream: UnixStream, mut sender: Sender<Message>) -> Result<()> {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        let (reader, mut writer) = stream.into_split();
+        let mut reader = BufReader::new(reader);
         let mut message = String::new();
-        match stream.read_to_string(&mut message).await {
-            Ok(_) => match Args::try_parse_from(message.split_ascii_whitespace()) {
-                Ok(args) => {
-                    sender.send(Message::CommandEvent(args.command)).await?;
-                    let _ = stream.write_all(b"success\n").await;
+
+        match reader.read_line(&mut message).await {
+            Ok(0) => return Ok(()), // Connection closed
+            Ok(_) => {
+                // Just split the message, no prepended "persway"
+                let args = message.trim().split_ascii_whitespace().collect::<Vec<_>>();
+
+                match Args::try_parse_from(args) {
+                    Ok(args) => {
+                        sender.send(Message::CommandEvent(args.command)).await?;
+                        writer.write_all(b"success\n").await?;
+                    }
+                    Err(e) => {
+                        log::error!("Invalid command: {e}");
+                        writer.write_all(b"fail: invalid command\n").await?;
+                    }
                 }
-                Err(e) => {
-                    log::error!("Invalid command: {e}");
-                    let _ = stream.write_all(b"fail: invalid command\n").await;
-                }
-            },
+            }
             Err(e) => log::error!("Socket read error: {e}"),
         }
         Ok(())

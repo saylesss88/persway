@@ -24,12 +24,12 @@ pub struct DaemonArgs {
     /// Called when window comes into focus. To automatically set the opacity of
     /// all other windows to 0.8 for example, you would set this to:
     ///
-    /// [tiling] opacity 0.8; opacity 1
+    /// `[tiling] opacity 0.8; opacity 1`
     ///
     /// Eg. set all tiling windows to opacity 0.8 but set the currently focused window to opacity 1.
     /// Or if you want to skip some applications - in this case firefox - you would do something like:
     ///
-    /// [tiling] opacity 0.8; [`app_id="firefox`] opacity 1; opacity 1
+    /// \[tiling\] opacity 0.8; \[`app_id="firefox`\] opacity 1; opacity 1
     #[arg(long, short = 'f')]
     pub on_window_focus: Option<String>,
 
@@ -40,7 +40,7 @@ pub struct DaemonArgs {
     ///
     /// and then in your sway config:
     ///
-    /// bindsym Mod1+tab [`con_mark=_prev`] focus
+    /// bindsym Mod1+tab \[`con_mark=_prev`\] focus
     #[arg(long, short = 'l')]
     pub on_window_focus_leave: Option<String>,
 
@@ -48,7 +48,7 @@ pub struct DaemonArgs {
     /// or other settings when persway exits. For example, if changing the opacity
     /// on window focus, you would probably want to reset that on exit like this:
     ///
-    /// [tiling] opacity 1
+    /// `[tiling] opacity 1`
     ///
     /// Eg. set all tiling windows to opacity 1
     #[arg(long, short = 'e')]

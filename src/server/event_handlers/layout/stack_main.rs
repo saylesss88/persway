@@ -1,3 +1,11 @@
+//! Stack‑main layout manager for Persway.
+//!
+//! Implements a two‑region layout:
+//! - A “main” area with a fixed relative width.
+//! - A “stack” area containing the rest of the windows, laid out as `tabbed`, `stacked`, or tiled.
+//!
+//! Handles `new`, `close`, `move`, and `floating` window events to maintain this structure.
+
 use crate::{
     layout::StackLayout,
     node_ext::NodeExt,
@@ -9,23 +17,47 @@ use swayipc_async::{Connection, WindowChange, WindowEvent, Workspace};
 
 use super::super::traits::WindowEventHandler;
 
+/// Decide whether a workspace should be skipped for stack‑main layout.
+///
+/// “Special” workspaces (e.g., temporary or scratchpad) are not managed by stack‑main.
 fn should_skip_layout_of_workspace(workspace: &Workspace) -> bool {
     is_persway_tmp_workspace(workspace) || is_scratchpad_workspace(workspace)
 }
 
+/// Stack‑main layout manager.
+///
+/// Maintains:
+/// - A fixed‑size main column for the “main” window.
+/// - A stack area for the remaining windows, laid out as `tabbed`, `stacked`, or tiled.
+/// - Sway‑level layout commands triggered by window events.
 pub struct StackMain {
+    /// Connection to Sway IPC used for querying the tree and running commands.
     connection: Connection,
+    /// Relative size of the main area as a percentage (0–100).
     size: u8,
+    /// How the stack area is laid out (`Tabbed`, `Stacked`, or `Tiled`).
     stack_layout: StackLayout,
 }
 
 impl StackMain {
+    /// Entry point for a stack‑main layout pass.
+    ///
+    /// Creates a `StackMain` instance with given `size` and `stack_layout`,
+    /// and dispatches the `WindowEvent` to the appropriate handler method.
+    ///
+    /// # Arguments
+    /// - `event`: The event to process (wrapped in `Box`).
+    /// - `size`: Main area size in percent.
+    /// - `stack_layout`: Layout for the stack area (`tabbed` / `stacked` / `tiled`).
     pub async fn handle(event: Box<WindowEvent>, size: u8, stack_layout: StackLayout) {
         if let Ok(mut manager) = Self::new(size, stack_layout).await {
             manager.handle(event).await;
         }
     }
 
+    /// Create a new `StackMain` instance.
+    ///
+    /// Connects to Sway IPC and initializes internal layout parameters.
     pub async fn new(size: u8, stack_layout: StackLayout) -> Result<Self> {
         let connection = Connection::new().await?;
         Ok(Self {
@@ -35,6 +67,12 @@ impl StackMain {
         })
     }
 
+    /// Handle a `WindowChange::New` event for stack‑main layout.
+    ///
+    /// Adjusts the workspace layout when a new window appears:
+    /// - Layout‑1 (1 node): split horizontally and place the new window in main.
+    /// - Layout‑2 (2 nodes): mark one node as stack, apply stack layout, and position main.
+    /// - Layout‑3 (3+ nodes in stack): reorganize stack using marks and swaps.
     async fn on_new_window(&mut self, event: &WindowEvent) -> Result<()> {
         let tree = self.connection.get_tree().await?;
         let node = tree
@@ -120,6 +158,11 @@ impl StackMain {
             _ => Ok(()),
         }
     }
+
+    /// Handle a `WindowChange::Close` event for stack‑main layout.
+    ///
+    /// Adjusts layout when a window is closed, usually by:
+    /// - Moving the stack back to `splith` or resizing it if only one window remains.
     async fn on_close_window(&mut self, event: &WindowEvent) -> Result<()> {
         let tree = self.connection.get_tree().await?;
         let ws = get_focused_workspace(&mut self.connection).await?;
@@ -163,6 +206,13 @@ impl StackMain {
 
         Ok(())
     }
+
+    /// Handle a `WindowChange::Move` event for stack‑main layout.
+    ///
+    /// When a window is moved:
+    /// - If it moves within the same workspace, treat it as a new window layout.
+    /// - If it moves to another workspace, call `on_new_window` for the target workspace
+    ///   and `on_close_window` for the source workspace.
     async fn on_move_window(&mut self, event: &WindowEvent) -> Result<()> {
         let tree = self.connection.get_tree().await?;
 
@@ -200,6 +250,14 @@ impl StackMain {
 }
 
 impl WindowEventHandler for StackMain {
+    /// Handle a `WindowEvent` in the stack‑main layout manager.
+    ///
+    /// Dispatches:
+    /// - `New` → `on_new_window`.
+    /// - `Close` → `on_close_window`.
+    /// - `Move` → `on_move_window`.
+    /// - `Floating` → `on_close_window` (if floated) or `on_new_window` (if un‑floated).
+    ///   Others are logged and ignored.
     async fn handle(&mut self, event: Box<WindowEvent>) {
         match event.change {
             WindowChange::New => {

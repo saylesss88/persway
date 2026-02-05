@@ -1,9 +1,16 @@
+//! Persway message handler module.
+//!
+//! Coordinates:
+//! - Workspace‑level layout state (`WorkspaceConfig`).
+//! - Event dispatch to layout handlers (`Spiral`, `StackMain`) and `WindowFocus`.
+//! - Command handling for `PerswayCommand` such as layout changes and stack commands.
+
 use std::collections::HashMap;
 
 use anyhow::Result;
 use swayipc_async::{Connection, WindowEvent};
 use tokio::sync::mpsc;
-use tokio::task; // Add this import
+use tokio::task;
 
 use super::command_handlers;
 use super::event_handlers;
@@ -12,22 +19,41 @@ use super::event_handlers::traits::WindowEventHandler;
 use crate::server::event_handlers::layout::spiral::Spiral;
 use crate::{commands::PerswayCommand, layout::WorkspaceLayout, utils};
 
+/// Configuration associated with a single workspace.
+///
+/// This struct holds the layout policy for one workspace (e.g., `spiral`, `stack_main`, `manual`).
 #[derive(Debug)]
 pub struct WorkspaceConfig {
     layout: WorkspaceLayout,
 }
 
+/// Main handler for all Sway events and `persway` commands.
+///
+/// Stores:
+/// - Per‑workspace `WorkspaceConfig`s mapped by workspace number.
+/// - The default layout for new workspaces.
+/// - A Sway `Connection` used for executing layout and rename commands.
+/// - A `WindowFocus` handler for opacity/mark‑based focus hooks.
+/// - A `mpsc::UnboundedSender` for forwarding events to the `Spiral` layout handler.
+/// - Optional `JoinHandle` for debounced workspace renaming.
 pub struct MessageHandler {
     connection: Connection,
     workspace_config: HashMap<i32, WorkspaceConfig>,
     default_layout: WorkspaceLayout,
     workspace_renaming: bool,
     window_focus_handler: event_handlers::misc::window_focus::WindowFocus,
-    spiral_tx: mpsc::UnboundedSender<Box<WindowEvent>>, // Add this field
+    spiral_tx: mpsc::UnboundedSender<Box<WindowEvent>>, // Sender to the Spiral event handler
     rename_handle: Option<task::JoinHandle<()>>,
 }
 
 impl MessageHandler {
+    /// Create a new `MessageHandler` with default layout and focus hooks.
+    ///
+    /// # Arguments
+    /// - `default_layout`: Layout used for workspaces that haven’t been explicitly configured.
+    /// - `workspace_renaming`: If `true`, workspace names are updated based on running apps.
+    /// - `on_window_focus`: Optional Sway command run when a window gains focus.
+    /// - `on_window_focus_leave`: Optional Sway command run when focus leaves a window.
     pub async fn new(
         default_layout: WorkspaceLayout,
         workspace_renaming: bool,
@@ -56,6 +82,9 @@ impl MessageHandler {
         })
     }
 
+    /// Return a mutable reference to the configuration of workspace `ws_num`.
+    ///
+    /// If no config exists for `ws_num`, a new entry is inserted with `self.default_layout`.
     pub fn get_workspace_config(&mut self, ws_num: i32) -> &WorkspaceConfig {
         self.workspace_config
             .entry(ws_num)
@@ -64,6 +93,12 @@ impl MessageHandler {
             })
     }
 
+    /// Handle a Sway `WindowEvent` by:
+    /// 1. Debouncing workspace renaming (if enabled).
+    /// 2. Routing the event to the appropriate layout handler (`spiral` or `stack_main`).
+    /// 3. Passing the event to the `WindowFocus` handler for opacity/mark effects.
+    ///
+    /// This method is called from the `Daemon`’s event loop for every `Window` event.
     pub async fn handle_event(&mut self, event: Box<WindowEvent>) -> Result<()> {
         log::debug!("controller.handle_event: {:?}", event.change);
 
@@ -106,11 +141,20 @@ impl MessageHandler {
         }
 
         // --- 3. FOCUS HANDLER ---
-        // (Note: Removed the duplicate WorkspaceRenamer block that was right here)
         self.window_focus_handler.handle(event).await;
 
         Ok(())
     }
+
+    /// Handle a `PerswayCommand` such as layout changes or stack commands.
+    ///
+    /// # Arguments
+    /// - `cmd`: The parsed command (e.g., `ChangeLayout`, `StackFocusNext`, etc.).
+    ///
+    /// The handler:
+    /// - Fetches the focused workspace.
+    /// - Updates layout state for that workspace if needed.
+    /// - Executes the corresponding layout logic asynchronously (e.g., `relayout_workspace`).
     pub async fn handle_command(&mut self, cmd: PerswayCommand) -> Result<()> {
         log::debug!("controller.handle_command: {cmd:?}");
         let ws = utils::get_focused_workspace(&mut self.connection).await?;

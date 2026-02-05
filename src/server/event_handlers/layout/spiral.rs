@@ -1,3 +1,10 @@
+//! Spiral layout manager for Persway.
+//!
+//! Handles:
+//! - A background task that serially processes `WindowEvent`s.
+//! - Dynamic layout switching (`split v` / `split h`) based on window aspect ratio.
+//! - Throttling of rapid focus events to avoid flickering.
+
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -10,19 +17,37 @@ use crate::{
 use anyhow::Result;
 use swayipc_async::{Connection, NodeLayout, WindowChange, WindowEvent, Workspace};
 
+/// Spiral layout manager.
+///
+/// Runs in a background task and:
+/// - Receives `WindowEvent`s via `spiral_tx`.
+/// - Calculates whether a node should be `split v` or `split h`.
+/// - Applies layout changes via Sway IPC.
+/// - Throttles repeated focus events and skips "special" workspaces.
 pub struct Spiral {
+    /// Connection to Sway used for querying the tree and running commands.
     connection: Connection,
+    /// Last focused container ID, used to avoid redundant layout changes.
     last_focused_id: Option<i64>,
+    /// Last time a layout pass was performed, used for throttling.
     last_layout_time: Option<Instant>,
 }
 
+/// Determine whether a workspace should be skipped for spiral layout.
+///
+/// Special workspaces (e.g., temporary or scratchpad) are not laid out by spiral.
 fn should_skip_layout_of_workspace(workspace: &Workspace) -> bool {
     is_persway_tmp_workspace(workspace) || is_scratchpad_workspace(workspace)
 }
 
 impl Spiral {
-    /// Spawns a background task that processes events serially
-    /// Returns a sender to send events to the handler
+    /// Spawn a background task that sequentially handles spiral layout events.
+    ///
+    /// The returned `UnboundedSender` should be used to send `Box<WindowEvent>`
+    /// to the spiral manager from the `MessageHandler`.
+    ///
+    /// # Return
+    /// `mpsc::UnboundedSender<Box<WindowEvent>>` for forwarding events to spiral.
     pub fn spawn_handler() -> mpsc::UnboundedSender<Box<WindowEvent>> {
         let (tx, mut rx) = mpsc::unbounded_channel();
 
@@ -44,6 +69,9 @@ impl Spiral {
         tx
     }
 
+    /// Create a new `Spiral` instance.
+    ///
+    /// Connects to Sway IPC and initializes internal state.
     async fn new() -> Result<Self> {
         let connection = Connection::new().await?;
         Ok(Self {
@@ -53,6 +81,13 @@ impl Spiral {
         })
     }
 
+    /// Perform spiral layout for a single window event.
+    ///
+    /// This method:
+    /// - Throttles very rapid layout passes.
+    /// - Skips duplicate focus events for the same container.
+    /// - Skips special workspaces (tmp, scratchpad).
+    /// - Computes whether a node should be `split v` or `split h` and applies it if needed.
     async fn layout(&mut self, event: WindowEvent) -> Result<()> {
         log::debug!("spiral manager handling event: {:?}", event.change);
 
@@ -137,6 +172,9 @@ impl Spiral {
 }
 
 impl WindowEventHandler for Spiral {
+    /// Handle a `WindowEvent` in the spiral layout manager.
+    ///
+    /// Only `WindowChange::Focus` events trigger layout work; all others are logged and ignored.
     async fn handle(&mut self, event: Box<WindowEvent>) {
         match event.change {
             WindowChange::Focus => {
