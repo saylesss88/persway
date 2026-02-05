@@ -2,12 +2,14 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use swayipc_async::{Connection, WindowEvent};
-use tokio::task;
+use tokio::sync::mpsc;
+use tokio::task; // Add this import
 
 use super::command_handlers;
 use super::event_handlers;
 use super::event_handlers::traits::WindowEventHandler;
 
+use crate::server::event_handlers::layout::spiral::Spiral;
 use crate::{commands::PerswayCommand, layout::WorkspaceLayout, utils};
 
 #[derive(Debug)]
@@ -15,14 +17,18 @@ pub struct WorkspaceConfig {
     layout: WorkspaceLayout,
 }
 
-#[derive(Debug)]
 pub struct MessageHandler {
     connection: Connection,
     workspace_config: HashMap<i32, WorkspaceConfig>,
     default_layout: WorkspaceLayout,
     workspace_renaming: bool,
     window_focus_handler: event_handlers::misc::window_focus::WindowFocus,
+    spiral_tx: mpsc::UnboundedSender<Box<WindowEvent>>, // Add this field
+    rename_handle: Option<task::JoinHandle<()>>,
 }
+
+// Remove Debug derive from MessageHandler since mpsc::UnboundedSender doesn't implement Debug
+// Or manually implement Debug if you need it
 
 impl MessageHandler {
     pub async fn new(
@@ -39,12 +45,17 @@ impl MessageHandler {
 
         let connection = Connection::new().await?;
 
+        // Initialize the spiral handler once
+        let spiral_tx = Spiral::spawn_handler();
+
         Ok(Self {
             connection,
             workspace_config: HashMap::new(),
             default_layout,
             workspace_renaming,
             window_focus_handler,
+            spiral_tx, // Store it
+            rename_handle: None,
         })
     }
 
@@ -61,12 +72,30 @@ impl MessageHandler {
 
         let ws = utils::get_focused_workspace(&mut self.connection).await?;
 
+        // --- 1. DEBOUNCED RENAMING ---
+        if self.workspace_renaming {
+            // Cancel the previous pending rename task if it exists
+            if let Some(handle) = self.rename_handle.take() {
+                handle.abort();
+            }
+
+            let event_clone = event.clone();
+
+            // Spawn a new task with a delay
+            self.rename_handle = Some(task::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                event_handlers::misc::workspace_renamer::WorkspaceRenamer::handle(event_clone)
+                    .await;
+            }));
+        }
+
+        // --- 2. LAYOUT MANAGEMENT ---
         match &self.get_workspace_config(ws.num).layout {
             WorkspaceLayout::Spiral => {
                 log::debug!("handling event via spiral manager");
-                task::spawn(event_handlers::layout::spiral::Spiral::handle(
-                    event.clone(),
-                ));
+                if let Err(e) = self.spiral_tx.send(event.clone()) {
+                    log::error!("failed to send event to spiral handler: {e}");
+                }
             }
             WorkspaceLayout::StackMain { stack_layout, size } => {
                 log::debug!("handling event via stack_main manager");
@@ -78,15 +107,13 @@ impl MessageHandler {
             }
             WorkspaceLayout::Manual => {}
         }
-        if self.workspace_renaming {
-            event_handlers::misc::workspace_renamer::WorkspaceRenamer::handle(event.clone()).await;
-        }
 
+        // --- 3. FOCUS HANDLER ---
+        // (Note: Removed the duplicate WorkspaceRenamer block that was right here)
         self.window_focus_handler.handle(event).await;
 
         Ok(())
     }
-
     pub async fn handle_command(&mut self, cmd: PerswayCommand) -> Result<()> {
         log::debug!("controller.handle_command: {cmd:?}");
         let ws = utils::get_focused_workspace(&mut self.connection).await?;
