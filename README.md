@@ -19,7 +19,7 @@ replacement for the original Persway v0.6.2.
 
 ---
 
-Persway works with the Sway Compositor, it persuades it to do little evil
+Persway works with the Sway Compositor, it persuades it to do little "evil"
 things. It features window focus handlers that can be used to adjust the opacity
 of focused and non-focused windows among many other things. Persway currently
 supports two layouts: `spiral` and `stack_main`.
@@ -39,7 +39,10 @@ sway socket making it a flexible tool for manipulating the Sway Compositor.
 ### From Source (Cargo)
 
 ```bash
+# Latest Changes
 cargo install --git https://github.com/saylesss88/persway
+# crates.io
+cargo install persway-tokio
 ```
 
 ---
@@ -114,7 +117,21 @@ startup = [
 
 You can also use an `exec` if you prefer.
 
-2. **Key Bindings (Optional)**
+## Key Bindings (Optional)
+
+> Stack-\* commands only do something when the current workspace is in **Stack
+> Main** layout; otherwise Persway will return an error.
+
+| Command                                | Works in Spiral | Works in Stack Main | What it does                                                        |
+| :------------------------------------- | :-------------: | :-----------------: | :------------------------------------------------------------------ |
+| `persway change-layout spiral`         |       Yes       |         Yes         | Sets the focused workspace’s layout preference to Spiral.           |
+| `persway change-layout stack-main ...` |       Yes       |         Yes         | Sets the focused workspace’s layout preference to Stack Main.       |
+| `persway change-layout manual`         |       Yes       |         Yes         | Sets focused workspace to “manual” (Persway stops rearranging).     |
+| `persway stack-focus-next/prev`        |       No        |         Yes         | Changes focus within the stack of the main‑stack layout.            |
+| `persway stack-swap-main`              |       No        |         Yes         | Swaps the focused stacked window with the main window.              |
+| `persway stack-main-rotate-next/prev`  |       No        |         Yes         | Rotates the main area and the stack (e.g., brings top of stack in). |
+
+2. **Key Bindings**
 
 Bind keys to control layout and focus. Add these to your
 `~/.config/sway/config`:
@@ -132,6 +149,10 @@ bindsym Mod4+v exec persway change-layout manual
 bindsym Mod4+x exec persway change-layout stack-main --size 70
 bindsym Mod4+z exec persway change-layout spiral
 ```
+
+These key bindings are **optional**. If you want to rely purely on
+`persway change-layout` interactively, you can skip them. They're mainly useful
+if you want to integrate Persway into your Sway key-chords or mouse bindings.
 
 ---
 
