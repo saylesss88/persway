@@ -6,7 +6,7 @@ authors = [
 	"T. Sawyer <saylesss87@proton.me>",
 ]
 edition = "2024"
-description = "Sway IPC daemon"
+description = "Sway layout and focus helper daemon that adds spiral and stack-main autotiling plus opacity and window renaming."
 repository = "https://github.com/saylesss88/persway"
 readme = "README.md"
 license = "MIT"
