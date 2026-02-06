@@ -21,6 +21,7 @@ use signal_hook_tokio::Signals;
 use std::process::exit;
 use swayipc_async::{Connection, Event, EventType};
 use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::oneshot;
 
 /// Generic sender type for cross‑task messaging.
 pub type Sender<T> = mpsc::UnboundedSender<T>;
@@ -31,7 +32,7 @@ pub type Sender<T> = mpsc::UnboundedSender<T>;
 #[derive(Debug)]
 pub enum Message {
     /// A command received from the `persway` CLI client.
-    CommandEvent(PerswayCommand),
+    CommandEvent(PerswayCommand, oneshot::Sender<anyhow::Result<()>>),
 }
 
 /// Persway daemon state.
@@ -169,46 +170,49 @@ impl Daemon {
 
         loop {
             select! {
-                // 1. DIRECT EVENT HANDLING (Low Latency)
-                event = sway_events.select_next_some() => {
-                    match event {
-                        Ok(Event::Window(event)) => {
-                            if let Some(handler) = &mut self.message_handler &&
-                                let Err(e) = handler.handle_event(event).await {
-                                log::error!("Error handling window event: {e}");
-                            }
-                        },
-                        Ok(Event::Workspace(_event)) => {
-                        }
-                        Err(e) => log::error!("Sway IPC event error: {e}"),
-                        _ => {} // Ignore other events
-                    }
-                },
-
-                // 2. Accept new socket connections
-                stream = incoming_rx.select_next_some() => {
-                    let sender = sender.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = Self::connection_loop(stream, sender).await {
-                            log::error!("Connection loop error: {e}");
-                        }
-                    });
-                },
-
-                // 3. Handle CLI commands
-                message = receiver.select_next_some() => {
-                    match message {
-                        Message::CommandEvent(command) => {
-                            if let Some(handler) = &mut self.message_handler {
-                                log::debug!("Executing CLI command: {command:?}");
-                                if let Err(e) = handler.handle_command(command).await {
-                                    log::error!("Command execution failed: {e}");
+                            // 1. DIRECT EVENT HANDLING (Low Latency)
+                            event = sway_events.select_next_some() => {
+                                match event {
+                                    Ok(Event::Window(event)) => {
+                                        if let Some(handler) = &mut self.message_handler &&
+                                            let Err(e) = handler.handle_event(event).await {
+                                            log::error!("Error handling window event: {e}");
+                                        }
+                                    },
+                                    Ok(Event::Workspace(_event)) => {
+                                    }
+                                    Err(e) => log::error!("Sway IPC event error: {e}"),
+                                    _ => {} // Ignore other events
                                 }
-                            }
-                        }
+                            },
+
+                            // 2. Accept new socket connections
+                            stream = incoming_rx.select_next_some() => {
+                                let sender = sender.clone();
+                                tokio::spawn(async move {
+                                    if let Err(e) = Self::connection_loop(stream, sender).await {
+                                        log::error!("Connection loop error: {e}");
+                                    }
+                                });
+                            },
+
+                            // 3. Handle CLI commands
+            message = receiver.select_next_some() => {
+                match message {
+                    Message::CommandEvent(command, reply_tx) => {
+                        let res: anyhow::Result<()> = if let Some(handler) = &mut self.message_handler {
+                            log::debug!("Executing CLI command: {command:?}");
+                            handler.handle_command(command).await
+                        } else {
+                            Err(anyhow::anyhow!("daemon not initialized"))
+                        };
+
+                        let _ = reply_tx.send(res);
                     }
                 }
             }
+
+                        }
         }
     }
 
@@ -227,27 +231,46 @@ impl Daemon {
 
         let (reader, mut writer) = stream.into_split();
         let mut reader = BufReader::new(reader);
-        let mut message = String::new();
+        let mut line = String::new();
 
-        match reader.read_line(&mut message).await {
-            Ok(0) => return Ok(()), // Connection closed
+        match reader.read_line(&mut line).await {
+            Ok(0) => return Ok(()), // EOF
             Ok(_) => {
-                // Just split the message, no prepended "persway"
-                let args = message.trim().split_ascii_whitespace().collect::<Vec<_>>();
+                let argv = line.trim().split_ascii_whitespace().collect::<Vec<_>>();
 
-                match Args::try_parse_from(args) {
-                    Ok(args) => {
-                        sender.send(Message::CommandEvent(args.command)).await?;
-                        writer.write_all(b"success\n").await?;
+                match Args::try_parse_from(argv) {
+                    Ok(myargs) => {
+                        let (reply_tx, reply_rx) = oneshot::channel::<anyhow::Result<()>>();
+
+                        if sender
+                            .send(Message::CommandEvent(myargs.command, reply_tx))
+                            .await
+                            .is_err()
+                        {
+                            writer.write_all(b"fail: daemon unavailable\n").await?;
+                            return Ok(());
+                        }
+
+                        match reply_rx.await {
+                            Ok(Ok(())) => writer.write_all(b"success\n").await?,
+                            Ok(Err(e)) => {
+                                writer.write_all(format!("fail: {e}\n").as_bytes()).await?;
+                            }
+                            Err(_) => writer.write_all(b"fail: daemon dropped response\n").await?,
+                        }
                     }
                     Err(e) => {
+                        // Optional: include clap's error text
                         log::error!("Invalid command: {e}");
                         writer.write_all(b"fail: invalid command\n").await?;
                     }
                 }
             }
-            Err(e) => log::error!("Socket read error: {e}"),
+            Err(e) => {
+                log::error!("Socket read error: {e}");
+            }
         }
+
         Ok(())
     }
 }
