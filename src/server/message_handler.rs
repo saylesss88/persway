@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use anyhow::Result;
+use anyhow::{Result, bail, ensure};
 use swayipc_async::{Connection, WindowEvent};
 use tokio::sync::mpsc;
 use tokio::task;
@@ -146,6 +146,21 @@ impl MessageHandler {
         Ok(())
     }
 
+    fn require_stack_main(
+        ws_num: i32,
+        ws_name: &str,
+        layout: &WorkspaceLayout,
+        cmd: &str,
+    ) -> Result<()> {
+        ensure!(
+            matches!(layout, WorkspaceLayout::StackMain { .. }),
+            "{cmd} only works on stack-main workspaces.\n\
+             Focused workspace: {ws_num} ('{ws_name}')\n\
+             Current layout: {layout:?}\n\
+             Fix: persway change-layout stack-main"
+        );
+        Ok(())
+    }
     /// Handle a `PerswayCommand` such as layout changes or stack commands.
     ///
     /// # Arguments
@@ -159,73 +174,91 @@ impl MessageHandler {
         log::debug!("controller.handle_command: {cmd:?}");
         let ws = utils::get_focused_workspace(&mut self.connection).await?;
 
-        let current_ws_config = self.get_workspace_config(ws.num);
+        if ws.num < 0 {
+            bail!(
+                "Focused workspace '{}' has no numeric workspace number, so persway commands that key off ws.num won't apply. \
+Consider naming workspaces with a leading number (e.g. '1: web').",
+                ws.name
+            );
+        }
+
+        // Snapshot current layout so we don't keep borrowing self.workspace_config
+        let current_layout = self.get_workspace_config(ws.num).layout.clone();
+
         match cmd {
             PerswayCommand::ChangeLayout { layout } => {
-                if current_ws_config.layout == layout {
-                    log::debug!(
-                        "no layout change of ws {} as the requested one was already set",
-                        ws.num,
-                    );
-                } else {
-                    self.workspace_config
-                        .entry(ws.num)
-                        .and_modify(|e| e.layout = layout.clone())
-                        .or_insert_with(|| WorkspaceConfig {
-                            layout: layout.clone(),
-                        });
-                    log::debug!("change layout of ws {} to {}", ws.num, layout);
-                    log::debug!("start relayout of ws {}", ws.num);
+                if current_layout == layout {
+                    // Optional: return Ok(()) or print a message; no need to error
+                    log::debug!("layout already set for ws {}", ws.num);
+                    return Ok(());
+                }
 
-                    task::spawn(utils::relayout_workspace(
-                        ws.num,
-                        |mut conn, ws_num, _old_ws_id, _output_id, windows| async move {
-                            for window in windows.iter().rev() {
-                                let cmd = format!(
-                                    "[con_id={}] move to workspace number {}; [con_id={}] focus",
-                                    window.id, ws_num, window.id
-                                );
-                                log::debug!("relayout closure cmd: {cmd}");
-                                conn.run_command(cmd).await?;
-                                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                            }
-                            Ok(())
-                        },
-                    ));
-                }
+                self.workspace_config
+                    .entry(ws.num)
+                    .and_modify(|e| e.layout = layout.clone())
+                    .or_insert_with(|| WorkspaceConfig {
+                        layout: layout.clone(),
+                    });
+
+                task::spawn(utils::relayout_workspace(
+                    ws.num,
+                    |mut conn, ws_num, _old_ws_id, _output_id, windows| async move {
+                        for window in windows.iter().rev() {
+                            let cmd = format!(
+                                "[con_id={}] move to workspace number {}; [con_id={}] focus",
+                                window.id, ws_num, window.id
+                            );
+                            conn.run_command(cmd).await?;
+                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                        }
+                        Ok(())
+                    },
+                ));
             }
+
             PerswayCommand::StackFocusNext => {
-                if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
-                    let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
-                    ctrl.stack_focus_next().await?;
-                }
+                Self::require_stack_main(ws.num, &ws.name, &current_layout, "stack-focus-next")?;
+                let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
+                ctrl.stack_focus_next().await?;
             }
+
             PerswayCommand::StackFocusPrev => {
-                if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
-                    let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
-                    ctrl.stack_focus_prev().await?;
-                }
+                Self::require_stack_main(ws.num, &ws.name, &current_layout, "stack-focus-prev")?;
+                let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
+                ctrl.stack_focus_prev().await?;
             }
+
             PerswayCommand::StackMainRotatePrev => {
-                if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
-                    let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
-                    ctrl.stack_main_rotate_prev().await?;
-                }
+                Self::require_stack_main(
+                    ws.num,
+                    &ws.name,
+                    &current_layout,
+                    "stack-main-rotate-prev",
+                )?;
+                let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
+                ctrl.stack_main_rotate_prev().await?;
             }
+
             PerswayCommand::StackMainRotateNext => {
-                if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
-                    let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
-                    ctrl.stack_main_rotate_next().await?;
-                }
+                Self::require_stack_main(
+                    ws.num,
+                    &ws.name,
+                    &current_layout,
+                    "stack-main-rotate-next",
+                )?;
+                let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
+                ctrl.stack_main_rotate_next().await?;
             }
+
             PerswayCommand::StackSwapMain => {
-                if let WorkspaceLayout::StackMain { .. } = current_ws_config.layout {
-                    let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
-                    ctrl.stack_swap_main().await?;
-                }
+                Self::require_stack_main(ws.num, &ws.name, &current_layout, "stack-swap-main")?;
+                let mut ctrl = command_handlers::layout::stack_main::StackMain::new().await?;
+                ctrl.stack_swap_main().await?;
             }
+
             PerswayCommand::Daemon(_) => unreachable!(),
         }
+
         Ok(())
     }
 }
