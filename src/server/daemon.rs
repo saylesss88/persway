@@ -138,7 +138,7 @@ impl Daemon {
         let mut sway_events = Connection::new().await?.subscribe(&subs).await?.fuse();
 
         match tokio::fs::remove_file(&self.socket_path).await {
-            Ok(()) => log::debug!("Removed stale socket {}", &self.socket_path),
+            Ok(()) => log::debug!("Removed stale socket {}", self.socket_path),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
             Err(e) => log::error!("Unable to remove stale socket: {e}"),
         }

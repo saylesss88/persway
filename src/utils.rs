@@ -95,7 +95,7 @@ where
         write!(
             cmd,
             "workspace number {focused_workspace_num}; move workspace to output {output_id}; ",
-            focused_workspace_num = &focused_workspace.num,
+            focused_workspace_num = focused_workspace.num,
             output_id = output.id,
         )
         .unwrap();
