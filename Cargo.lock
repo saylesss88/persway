@@ -742,7 +742,8 @@ dependencies = [
 [[package]]
 name = "randpaper_lib"
 version = "0.1.0"
-source = "git+https://github.com/saylesss88/randpaper#88e0318030309a0b203587e3577178ea4c5eb52a"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "757cdc1fc86e6e202de9ed502b623d5ee4178868ec5ae2c282e3e7edf0d60605"
 dependencies = [
  "image",
  "smithay-client-toolkit",

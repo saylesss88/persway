@@ -58,7 +58,7 @@ signal-hook-tokio = {version = "0.4", default-features = false, features = [
 signal-hook = "0.4.4"
 anyhow = "1.0.102"
 futures = "0.3.32"
-randpaper_lib = {git = "https://github.com/saylesss88/randpaper"}
+randpaper_lib = "0.1.0"
 
 [[bin]]
 name = "persway"
@@ -69,3 +69,7 @@ lto = "thin"
 panic = "abort"
 strip = true
 codegen-units = 1
+
+[features]
+default = []
+wallpaper = ["dep:randpaper_lib"]
