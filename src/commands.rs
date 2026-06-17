@@ -1,4 +1,6 @@
 use crate::layout::{STACK_MAIN_DEFAULT_SIZE, StackLayout, WorkspaceLayout};
+#[cfg(feature = "wallpaper")]
+use std::path::PathBuf;
 
 #[derive(clap::Parser, Debug)]
 pub struct DaemonArgs {
@@ -75,5 +77,11 @@ pub enum PerswayCommand {
         /// manual, spiral, `stack_main`
         #[command(subcommand)]
         layout: WorkspaceLayout,
+    },
+    #[cfg(feature = "wallpaper")]
+    SetWallpaper {
+        /// Path to the image file (JPEG, PNG, BMP, WebP)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
     },
 }
