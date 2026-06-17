@@ -232,6 +232,65 @@ Options:
 
 ---
 
+## Wallpaper Support (optional feature)
+
+Persway can set your Wayland wallpaper directly using
+[`randpaper_lib`](https://github.com/saylesss88/randpaper) no `swaybg`, no
+`swww` required.
+
+### Building with wallpaper support
+
+This is a WIP, it's currently blocking where if you set one monitors wallpaper
+with `--output`, it blocks you from setting the other. You can let the compositor
+choose by not specifying `--output` to have all monitors use the same wallpaper.
+
+```bash
+# From source
+cargo install persway-tokio --features wallpaper
+```
+
+### Usage
+
+With the daemon already running, send the `set-wallpaper` command from anywhere:
+
+```bash
+# Target a specific output (e.g. eDP-1, HDMI-A-1)
+persway set-wallpaper --path /path/to/image.jpg --output eDP-1
+
+# Let the compositor choose (single-monitor or fallback)
+persway set-wallpaper --path /path/to/image.png
+```
+
+### Sway config
+
+To set a wallpaper on startup, add this alongside your `exec persway daemon` line:
+
+```text
+exec persway daemon --default-layout spiral ...
+exec persway set-wallpaper --path ~/wallpapers/current.jpg --output eDP-1
+```
+
+To bind a key to cycle wallpapers with a script:
+
+```text
+bindsym Mod4+w exec persway set-wallpaper --path $(find ~/wallpapers -type f | shuf -n1)
+```
+
+Calling `set-wallpaper` again while one is already running will cleanly stop the
+previous renderer before starting the new one.
+
+### Supported formats
+
+JPEG, PNG, BMP, WebP. The image is scaled to fill the output (cover mode,
+Lanczos3 resampling).
+
+### Requirements
+
+- A Wayland compositor supporting `zwlr_layer_shell_v1` (Sway, Hyprland, and
+  most wlroots-based compositors)
+- `WAYLAND_DISPLAY` set in the environment (true by default when running under
+  Sway)--
+
 ## License
 
 Persway-Tokio is released under the

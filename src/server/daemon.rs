@@ -214,7 +214,7 @@ impl Daemon {
                         if let Some(old) = self.wallpaper_handle.take() {
                             old.stop().await;
                         }
-                        self.wallpaper_handle = Some(crate::wallpaper::spawn(path, output));
+                        self.wallpaper_handle = Some(crate::wallpaper::spawn(path, output).await);
                         Ok(())
                     }
                     command => {
@@ -255,7 +255,10 @@ impl Daemon {
         match reader.read_line(&mut line).await {
             Ok(0) => return Ok(()), // EOF
             Ok(_) => {
-                let argv = line.trim().split_ascii_whitespace().collect::<Vec<_>>();
+                let mut argv = line.trim().split_ascii_whitespace().collect::<Vec<_>>();
+                if let Some(first) = argv.first_mut() {
+                    *first = "persway";
+                }
 
                 match Args::try_parse_from(argv) {
                     Ok(myargs) => {
