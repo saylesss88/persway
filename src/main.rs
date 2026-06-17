@@ -8,6 +8,7 @@ mod node_ext;
 mod server;
 use clap::Parser;
 mod utils;
+mod wallpaper;
 
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]
