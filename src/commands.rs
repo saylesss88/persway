@@ -81,6 +81,9 @@ pub enum PerswayCommand {
     #[cfg(feature = "wallpaper")]
     SetWallpaper {
         /// Path to the image file (JPEG, PNG, BMP, WebP)
+        #[arg(long, short = 'p')]
+        path: PathBuf,
+        /// Connector name to target, e.g. "eDP-1". Omit to let the compositor choose.
         #[arg(long, short = 'o')]
         output: Option<String>,
     },

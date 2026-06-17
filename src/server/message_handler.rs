@@ -257,6 +257,9 @@ Consider naming workspaces with a leading number (e.g. '1: web').",
             }
 
             PerswayCommand::Daemon(_) => unreachable!(),
+
+            #[cfg(feature = "wallpaper")]
+            PerswayCommand::SetWallpaper { .. } => unreachable!(),
         }
 
         Ok(())

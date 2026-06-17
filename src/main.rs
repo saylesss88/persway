@@ -8,6 +8,7 @@ mod node_ext;
 mod server;
 use clap::Parser;
 mod utils;
+#[cfg(feature = "wallpaper")]
 mod wallpaper;
 
 #[derive(Parser, Debug)]

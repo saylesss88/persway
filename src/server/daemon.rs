@@ -10,6 +10,8 @@ use super::message_handler::MessageHandler;
 use crate::Args;
 use crate::commands::PerswayCommand;
 use crate::layout::WorkspaceLayout;
+#[cfg(feature = "wallpaper")]
+use crate::wallpaper;
 use crate::{commands::DaemonArgs, utils};
 use anyhow::Result;
 use clap::Parser;
@@ -57,6 +59,9 @@ pub struct Daemon {
     /// - Whether workspace renaming is enabled.
     /// - Focus/leave hooks for opacity or marking.
     init_args: Option<(WorkspaceLayout, bool, Option<String>, Option<String>)>,
+
+    #[cfg(feature = "wallpaper")]
+    wallpaper_handle: Option<wallpaper::WallpaperHandle>,
 }
 
 impl Daemon {
@@ -94,6 +99,8 @@ impl Daemon {
                 on_window_focus,
                 on_window_focus_leave,
             )),
+            #[cfg(feature = "wallpaper")]
+            wallpaper_handle: None,
         }
     }
 
@@ -170,49 +177,61 @@ impl Daemon {
 
         loop {
             select! {
-                            // 1. DIRECT EVENT HANDLING (Low Latency)
-                            event = sway_events.select_next_some() => {
-                                match event {
-                                    Ok(Event::Window(event)) => {
-                                        if let Some(handler) = &mut self.message_handler &&
-                                            let Err(e) = handler.handle_event(event).await {
-                                            log::error!("Error handling window event: {e}");
-                                        }
-                                    },
-                                    Ok(Event::Workspace(_event)) => {
-                                    }
-                                    Err(e) => log::error!("Sway IPC event error: {e}"),
-                                    _ => {} // Ignore other events
-                                }
-                            },
+                                                   // 1. DIRECT EVENT HANDLING (Low Latency)
+                                                   event = sway_events.select_next_some() => {
+                                                       match event {
+                                                           Ok(Event::Window(event)) => {
+                                                               if let Some(handler) = &mut self.message_handler &&
+                                                                   let Err(e) = handler.handle_event(event).await {
+                                                                   log::error!("Error handling window event: {e}");
+                                                               }
+                                                           },
+                                                           Ok(Event::Workspace(_event)) => {
+                                                           }
+                                                           Err(e) => log::error!("Sway IPC event error: {e}"),
+                                                           _ => {} // Ignore other events
+                                                       }
+                                                   },
 
-                            // 2. Accept new socket connections
-                            stream = incoming_rx.select_next_some() => {
-                                let sender = sender.clone();
-                                tokio::spawn(async move {
-                                    if let Err(e) = Self::connection_loop(stream, sender).await {
-                                        log::error!("Connection loop error: {e}");
-                                    }
-                                });
-                            },
+                                                   // 2. Accept new socket connections
+                                                   stream = incoming_rx.select_next_some() => {
+                                                       let sender = sender.clone();
+                                                       tokio::spawn(async move {
+                                                           if let Err(e) = Self::connection_loop(stream, sender).await {
+                                                               log::error!("Connection loop error: {e}");
+                                                           }
+                                                       });
+                                                   },
 
-                            // 3. Handle CLI commands
-            message = receiver.select_next_some() => {
-                match message {
-                    Message::CommandEvent(command, reply_tx) => {
-                        let res: anyhow::Result<()> = if let Some(handler) = &mut self.message_handler {
+                                                   // 3. Handle CLI commands
+                                   message = receiver.select_next_some() => {
+                                       match message {
+
+            Message::CommandEvent(command, reply_tx) => {
+                let res: anyhow::Result<()> = match command {
+                    #[cfg(feature = "wallpaper")]
+                    PerswayCommand::SetWallpaper { path, output } => {
+                        if let Some(old) = self.wallpaper_handle.take() {
+                            old.stop().await;
+                        }
+                        self.wallpaper_handle = Some(crate::wallpaper::spawn(path, output));
+                        Ok(())
+                    }
+                    command => {
+                        if let Some(handler) = &mut self.message_handler {
                             log::debug!("Executing CLI command: {command:?}");
                             handler.handle_command(command).await
                         } else {
                             Err(anyhow::anyhow!("daemon not initialized"))
-                        };
-
-                        let _ = reply_tx.send(res);
-                    }
-                }
-            }
-
                         }
+                    }
+                };
+                let _ = reply_tx.send(res);
+            }
+                                       }
+                                   }
+
+                                               }
         }
     }
 
