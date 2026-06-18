@@ -27,7 +27,7 @@ impl WallpaperHandle {
 }
 
 /// Spawn wallpaper renderer for a single output.
-pub async fn spawn_for_output(path: PathBuf, output: String) -> WallpaperHandle {
+pub fn spawn_for_output(path: PathBuf, output: String) -> WallpaperHandle {
     let stop = Arc::new(AtomicBool::new(false));
     let stop_clone = Arc::clone(&stop);
 
