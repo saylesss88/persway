@@ -118,20 +118,6 @@ name = "bytemuck"
 version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8efb64bd706a16a1bdde310ae86b351e4d21550d98d056f22f8a7f7a2183fec"
-dependencies = [
- "bytemuck_derive",
-]
-
-[[package]]
-name = "bytemuck_derive"
-version = "1.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9abbd1bc6865053c427f7198e6af43bfdedc55ab791faed4fbd361d789575ff"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "byteorder-lite"
@@ -144,31 +130,6 @@ name = "bytes"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
-
-[[package]]
-name = "calloop"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dbf9978365bac10f54d1d4b04f7ce4427e51f71d61f2fe15e3fed5166474df7"
-dependencies = [
- "bitflags",
- "polling",
- "rustix",
- "slab",
- "tracing",
-]
-
-[[package]]
-name = "calloop-wayland-source"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "138efcf0940a02ebf0cc8d1eff41a1682a46b431630f4c52450d6265876021fa"
-dependencies = [
- "calloop",
- "rustix",
- "wayland-backend",
- "wayland-client",
-]
 
 [[package]]
 name = "cc"
@@ -457,22 +418,11 @@ checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
- "image-webp",
  "moxcms",
  "num-traits",
  "png",
  "zune-core",
  "zune-jpeg",
-]
-
-[[package]]
-name = "image-webp"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "525e9ff3e1a4be2fbea1fdf0e98686a6d98b4d8f937e1bf7402245af1909e8c3"
-dependencies = [
- "byteorder-lite",
- "quick-error",
 ]
 
 [[package]]
@@ -716,12 +666,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0c5ccf5294c6ccd63a74f1565028353830a9c2f5eb0c682c355c471726a6e3f"
 
 [[package]]
-name = "quick-error"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
-
-[[package]]
 name = "quick-xml"
 version = "0.39.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -741,11 +685,13 @@ dependencies = [
 
 [[package]]
 name = "randpaper_lib"
-version = "0.1.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "757cdc1fc86e6e202de9ed502b623d5ee4178868ec5ae2c282e3e7edf0d60605"
+checksum = "34cf35fdc1c6dad9843713c8b90571494fdfdb508bafbf58308c887e46016c1c"
 dependencies = [
  "image",
+ "log",
+ "rustix",
  "smithay-client-toolkit",
  "thiserror",
  "wayland-client",
@@ -914,14 +860,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0512da38f5e2b31201a93524adb8d3136276fa4fe4aafab4e1f727a82b534cc0"
 dependencies = [
  "bitflags",
- "bytemuck",
- "calloop",
- "calloop-wayland-source",
  "cursor-icon",
  "libc",
  "log",
  "memmap2",
- "pkg-config",
  "rustix",
  "thiserror",
  "wayland-backend",
@@ -933,7 +875,6 @@ dependencies = [
  "wayland-protocols-misc",
  "wayland-protocols-wlr",
  "wayland-scanner",
- "xkbcommon",
  "xkeysym",
 ]
 
@@ -1030,23 +971,6 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "tracing"
-version = "0.1.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
-dependencies = [
- "log",
- "pin-project-lite",
- "tracing-core",
-]
-
-[[package]]
-name = "tracing-core"
-version = "0.1.36"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 
 [[package]]
 name = "unicode-ident"
@@ -1206,24 +1130,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bec9e4a500ca8864c5b47b8b482a73d62e4237670e5b5f1d6b9e3cae50f28f2b"
 
 [[package]]
-name = "xkbcommon"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d66ca9352cbd4eecbbc40871d8a11b4ac8107cfc528a6e14d7c19c69d0e1ac9"
-dependencies = [
- "libc",
- "memmap2",
- "xkeysym",
-]
-
-[[package]]
 name = "xkeysym"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
-dependencies = [
- "bytemuck",
-]
 
 [[package]]
 name = "zmij"

@@ -20,6 +20,8 @@ use futures::channel::mpsc;
 use futures::{select, stream::StreamExt};
 use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals;
+#[cfg(feature = "wallpaper")]
+use std::collections::HashMap;
 use std::process::exit;
 use swayipc_async::{Connection, Event, EventType};
 use tokio::net::{UnixListener, UnixStream};
@@ -61,7 +63,7 @@ pub struct Daemon {
     init_args: Option<(WorkspaceLayout, bool, Option<String>, Option<String>)>,
 
     #[cfg(feature = "wallpaper")]
-    wallpaper_handle: Option<wallpaper::WallpaperHandle>,
+    wallpaper_handles: HashMap<String, wallpaper::WallpaperHandle>,
 }
 
 impl Daemon {
@@ -100,7 +102,7 @@ impl Daemon {
                 on_window_focus_leave,
             )),
             #[cfg(feature = "wallpaper")]
-            wallpaper_handle: None,
+            wallpaper_handles: HashMap::new(),
         }
     }
 
@@ -131,6 +133,8 @@ impl Daemon {
     ///   - Sway events to `message_handler.handle_event`.
     ///   - New socket connections to `connection_loop`.
     ///   - CLI commands to `message_handler.handle_command`.
+    /// Per‑connection loop that reads a single line command from a Unix socket.
+    ///
     pub async fn run(&mut self) -> Result<()> {
         // Initialize MessageHandler asynchronously (it needs a connection)
         if let Some((layout, renaming, focus, leave)) = self.init_args.take() {
@@ -155,7 +159,6 @@ impl Daemon {
         // Channel for CLI commands only
         let (sender, receiver) = mpsc::unbounded();
         let mut receiver = receiver.fuse();
-
         let (incoming_tx, incoming_rx) = mpsc::unbounded();
         let mut incoming_rx = incoming_rx.fuse();
 
@@ -177,65 +180,98 @@ impl Daemon {
 
         loop {
             select! {
-                                                   // 1. DIRECT EVENT HANDLING (Low Latency)
-                                                   event = sway_events.select_next_some() => {
-                                                       match event {
-                                                           Ok(Event::Window(event)) => {
-                                                               if let Some(handler) = &mut self.message_handler &&
-                                                                   let Err(e) = handler.handle_event(event).await {
-                                                                   log::error!("Error handling window event: {e}");
-                                                               }
-                                                           },
-                                                           Ok(Event::Workspace(_event)) => {
-                                                           }
-                                                           Err(e) => log::error!("Sway IPC event error: {e}"),
-                                                           _ => {} // Ignore other events
-                                                       }
-                                                   },
+                            // 1. Direct event handling (low latency)
+                            event = sway_events.select_next_some() => {
+                                match event {
+                                    Ok(Event::Window(event)) => {
+                                        if let Some(handler) = &mut self.message_handler
+                                            && let Err(e) = handler.handle_event(event).await
+                                        {
+                                            log::error!("Error handling window event: {e}");
+                                        }
+                                    }
+                                    Ok(Event::Workspace(_event)) => {}
+                                    Err(e) => log::error!("Sway IPC event error: {e}"),
+                                    _ => {}
+                                }
+                            }
 
-                                                   // 2. Accept new socket connections
-                                                   stream = incoming_rx.select_next_some() => {
-                                                       let sender = sender.clone();
-                                                       tokio::spawn(async move {
-                                                           if let Err(e) = Self::connection_loop(stream, sender).await {
-                                                               log::error!("Connection loop error: {e}");
-                                                           }
-                                                       });
-                                                   },
+                            // 2. Accept new socket connections
+                            stream = incoming_rx.select_next_some() => {
+                                let sender = sender.clone();
+                                tokio::spawn(async move {
+                                    if let Err(e) = Self::connection_loop(stream, sender).await {
+                                        log::error!("Connection loop error: {e}");
+                                    }
+                                });
+                            }
 
-                                                   // 3. Handle CLI commands
-                                   message = receiver.select_next_some() => {
-                                       match message {
+                            // 3. Handle CLI commands
+                            message = receiver.select_next_some() => {
+                                match message {
+                                    Message::CommandEvent(command, reply_tx) => {
+                                        let res: anyhow::Result<()> = match command {
+                                            #[cfg(feature = "wallpaper")]
+                                            PerswayCommand::SetWallpaper { path, output } => {
+                                                match output {
+                                                    Some(output_name) => {
 
-            Message::CommandEvent(command, reply_tx) => {
-                let res: anyhow::Result<()> = match command {
-                    #[cfg(feature = "wallpaper")]
-                    PerswayCommand::SetWallpaper { path, output } => {
-                        if let Some(old) = self.wallpaper_handle.take() {
-                            old.stop().await;
+            log::info!("Setting wallpaper for {output_name}, current handles: {:?}",
+                    self.wallpaper_handles.keys().collect::<Vec<_>>());                                            if let Some(old) = self.wallpaper_handles.remove(&output_name) {
+                                                            old.stop().await;
+                                                        }
+                                                        let handle = crate::wallpaper::spawn_for_output(
+                                                            path,
+                                                            output_name.clone(),
+                                                        )
+                                                        .await;
+                                                        self.wallpaper_handles.insert(output_name, handle);
+                                                        Ok(())
+                                                    }
+                                                    None => {
+                                                        for (_, old) in self.wallpaper_handles.drain() {
+                                                            old.stop().await;
+                                                        }
+                                                        let mut conn = swayipc_async::Connection::new().await?;
+                                                        let outputs = conn
+                                                            .get_outputs()
+                                                            .await?
+                                                            .into_iter()
+                                                            .filter(|o| o.active)
+                                                            .map(|o| o.name)
+                                                            .collect::<Vec<_>>();
+                                                        if outputs.is_empty() {
+                                                            let _ = crate::wallpaper::spawn(path, None).await;
+                                                            return Ok(());
+                                                        }
+                                                        for out in outputs {
+                                                            let handle = crate::wallpaper::spawn_for_output(
+                                                                path.clone(),
+                                                                out.clone(),
+                                                            )
+                                                            .await;
+                                                            self.wallpaper_handles.insert(out, handle);
+                                                        }
+                                                        Ok(())
+                                                    }
+                                                }
+                                            }
+                                            command => {
+                                                if let Some(handler) = &mut self.message_handler {
+                                                    log::debug!("Executing CLI command: {command:?}");
+                                                    handler.handle_command(command).await
+                                                } else {
+                                                    Err(anyhow::anyhow!("daemon not initialized"))
+                                                }
+                                            }
+                                        };
+                                        let _ = reply_tx.send(res);
+                                    }
+                                }
+                            }
                         }
-                        self.wallpaper_handle = Some(crate::wallpaper::spawn(path, output).await);
-                        Ok(())
-                    }
-                    command => {
-                        if let Some(handler) = &mut self.message_handler {
-                            log::debug!("Executing CLI command: {command:?}");
-                            handler.handle_command(command).await
-                        } else {
-                            Err(anyhow::anyhow!("daemon not initialized"))
-                        }
-                    }
-                };
-                let _ = reply_tx.send(res);
-            }
-                                       }
-                                   }
-
-                                               }
         }
     }
-
-    /// Per‑connection loop that reads a single line command from a Unix socket.
     ///
     /// Parses the command via `clap::Parser` on `Args`, then sends the resulting
     /// `PerswayCommand` over `sender` as a `Message::CommandEvent`.

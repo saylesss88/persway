@@ -26,6 +26,21 @@ impl WallpaperHandle {
     }
 }
 
+/// Spawn wallpaper renderer for a single output.
+pub async fn spawn_for_output(path: PathBuf, output: String) -> WallpaperHandle {
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_clone = Arc::clone(&stop);
+
+    let handle = tokio::task::spawn_blocking(move || {
+        render_wallpaper(&path, Some(output.as_str()), &stop_clone)
+    });
+
+    WallpaperHandle {
+        stop,
+        handles: vec![handle],
+    }
+}
+
 /// Spawn a new wallpaper renderer, returning a handle to cancel it later.
 ///
 /// If `output` is `None` the compositor chooses the output.
