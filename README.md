@@ -43,6 +43,8 @@ sway socket making it a flexible tool for manipulating the Sway Compositor.
 cargo install --git https://github.com/saylesss88/persway
 # crates.io
 cargo install persway-tokio
+# With per-monitor wallpaper support through `randpaper_lib`
+cargo install persway-tokio --features wallpaper
 ```
 
 ---
