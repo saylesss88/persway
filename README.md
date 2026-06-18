@@ -255,6 +255,9 @@ With the daemon already running, send the `set-wallpaper` command from anywhere:
 # Target a specific output (e.g. eDP-1, HDMI-A-1)
 persway set-wallpaper --path /path/to/image.jpg --output eDP-1
 
+# Set a different wallpaper for another monitor
+persway set-wallpaper --path /path/to/image.jpg --output HDMI-A-1
+
 # Let the compositor choose (sets same wallpaper for all monitors)
 persway set-wallpaper --path /path/to/image.png
 ```
