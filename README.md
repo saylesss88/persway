@@ -240,10 +240,6 @@ Persway can set your Wayland wallpaper directly using
 
 ### Building with wallpaper support
 
-This is a WIP, it's currently blocking where if you set one monitors wallpaper
-with `--output`, it blocks you from setting the other. You can let the compositor
-choose by not specifying `--output` to have all monitors use the same wallpaper.
-
 ```bash
 # From source
 cargo install persway-tokio --features wallpaper
@@ -257,17 +253,25 @@ With the daemon already running, send the `set-wallpaper` command from anywhere:
 # Target a specific output (e.g. eDP-1, HDMI-A-1)
 persway set-wallpaper --path /path/to/image.jpg --output eDP-1
 
-# Let the compositor choose (single-monitor or fallback)
+# Let the compositor choose (sets same wallpaper for all monitors)
 persway set-wallpaper --path /path/to/image.png
 ```
 
 ### Sway config
 
-To set a wallpaper on startup, add this alongside your `exec persway daemon` line:
+To set a wallpaper on startup, add this alongside your `exec persway daemon`
+line, since we list no `--output`, this will apply the same wallpaper to all
+monitors:
 
 ```text
-exec persway daemon --default-layout spiral ...
-exec persway set-wallpaper --path ~/wallpapers/current.jpg --output eDP-1
+exec_always sleep 1 && persway set-wallpaper --path ~/Pictures/wallpapers2/Bonsai-Plant.png
+
+exec persway daemon \
+  -w \
+  -e '[tiling] opacity 1' \
+  -f '[tiling] opacity 0.95; opacity 1' \
+  -l 'mark --add _prev' \
+  --default-layout spiral &
 ```
 
 To bind a key to cycle wallpapers with a script:
